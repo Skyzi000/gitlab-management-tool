@@ -1,12 +1,17 @@
 import { Gitlab } from "@gitbeaker/node";
-import { existsSync, readFileSync } from "fs";
-
+import { Client, Intents, TextBasedChannels } from "discord.js";
+import { existsSync, readFileSync, writeFileSync } from "fs";
+import { mkdtemp, rm } from "fs/promises";
+import { tmpdir } from "os";
+import { sep } from "path";
 
 let gitlabToken: string;
+let discordBotToken: string;
 
 if (process.env.NODE_ENV === "production") {
-    const tokenFile = process.env.GITLAB_TOKEN_FILE;
-    if (tokenFile === undefined || !existsSync(tokenFile)) {
+    const gitlabTokenFile = process.env.GITLAB_TOKEN_FILE;
+    const discordTokenFile = process.env.DISCORD_BOT_TOKEN_FILE;
+    if (gitlabTokenFile === undefined || !existsSync(gitlabTokenFile)) {
         if (process.env.GITLAB_TOKEN === undefined) {
             console.error("'GITLAB_TOKEN'を設定してください。")
             process.exit(1);
@@ -19,7 +24,22 @@ if (process.env.NODE_ENV === "production") {
         }
     }
     else {
-        gitlabToken = readFileSync(tokenFile, "utf-8").trim();
+        gitlabToken = readFileSync(gitlabTokenFile, "utf-8").trim();
+    }
+    if (discordTokenFile === undefined || !existsSync(discordTokenFile)) {
+        if (process.env.DISCORD_BOT_TOKEN === undefined) {
+            console.error("'DISCORD_BOT_TOKEN'を設定してください。")
+            process.exit(1);
+        }
+        else {
+            discordBotToken = process.env.DISCORD_BOT_TOKEN;
+            console.warn(
+                "環境変数'DISCORD_BOT_TOKEN'ではなく、secretsの利用をお勧めします。\n" +
+                "参考: https://docs.docker.com/compose/compose-file/compose-file-v3/#secrets")
+        }
+    }
+    else {
+        discordBotToken = readFileSync(discordTokenFile, "utf-8").trim();
     }
 }
 else {
@@ -29,17 +49,74 @@ else {
         console.error("'GITLAB_TOKEN'を設定してください。")
         process.exit(1);
     }
+    if (process.env.DISCORD_BOT_TOKEN === undefined) {
+        console.error("'DISCORD_BOT_TOKEN'を設定してください。")
+        process.exit(1);
+    }
     gitlabToken = process.env.GITLAB_TOKEN;
+    discordBotToken = process.env.DISCORD_BOT_TOKEN;
 }
-
 
 const gitlab = new Gitlab({ token: gitlabToken });
 
 const projectId = process.env.GITLAB_PROJECT_ID;
-if (projectId == undefined)
-    process.exit();
-gitlab.ProjectMembers.all(projectId, { includeInherited: true }).then((members) => {
-    members.forEach(m => {
-        console.log(`${m.id},${m.name},${m.username}`)
-    })
+
+const client: Client = new Client({
+    intents: [
+        Intents.FLAGS.GUILDS,
+        Intents.FLAGS.GUILD_MESSAGES,
+        Intents.FLAGS.DIRECT_MESSAGES,
+        Intents.FLAGS.GUILD_MESSAGE_TYPING
+    ]
 });
+
+client.once("ready", async () => {
+    if (client.user == null) {
+        console.log("client.user is null!");
+        return;
+    }
+    console.log(`${client.user.username} is ready!`);
+});
+
+client.on("message", async message => {
+    if (message.author.bot || message.guildId == null || client.user == null || !(message.channel.type === "GUILD_TEXT" || message.channel.type === "GUILD_NEWS") || message.channelId !== process.env.DISCORD_CHANNEL_ID) {
+        return;
+    }
+    if (message.mentions.users.has(client.user.id)) {
+        const cmds = message.content.split(" ").slice(1).filter((value) => value.trim() !== "");
+        console.log(`Commands: ${cmds.join(", ")}`);
+        switch (cmds[0]?.trim()) {
+            case "mlist":
+                if (projectId == undefined)
+                    return;
+                message.channel.sendTyping();
+                try {
+                    const mlist = await mlistCsv(projectId);
+                    const dir = await mkdtemp(`${tmpdir()}${sep}`);
+                    const file = dir + sep + "mlist.csv";
+                    writeFileSync(file, mlist);
+                    await message.reply({ files: [file] });
+                    rm(dir, { recursive: true, force: true });
+                } catch (err) {
+                    console.error(err);
+                }
+                break;
+            default:
+                await message.reply(`コマンド \`${cmds.join(" ")}\` を解釈できません。`);
+                break;
+        }
+    }
+});
+
+client.login(discordBotToken);
+
+async function mlistCsv(projectId: string | number) {
+    let mlist: string = "";
+    await gitlab.ProjectMembers.all(projectId, { includeInherited: true }).then((members) => {
+        members.forEach(m => {
+            mlist += `${m.id},${m.name},${m.username}\n`;
+        });
+    });
+    return mlist;
+}
+
