@@ -1,5 +1,5 @@
 import { Gitlab } from "@gitbeaker/node";
-import { Client, Intents, TextBasedChannels } from "discord.js";
+import { Client, Intents, Message, TextBasedChannels } from "discord.js";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
@@ -81,59 +81,21 @@ client.once("ready", async () => {
     client.user.setActivity({ name: `Version ${process.env.npm_package_version}` });
     console.log(`${client.user.username} is ready!`);
 });
-client.on("message", async message => {
+
+async function onMessage(message: Message): Promise<void> {
     if (message.author.bot || message.guildId == null || client.user == null || !(message.channel.type === "GUILD_TEXT" || message.channel.type === "GUILD_NEWS") || message.channelId !== process.env.DISCORD_CHANNEL_ID) {
         return;
     }
     if (message.mentions.users.has(client.user.id)) {
-        const cmds = message.content.split(" ").slice(1).filter((value) => value.trim() !== "");
-        console.log(`Commands: ${cmds.join(", ")}`);
-        switch (cmds[0]?.trim()) {
-            case "v":
-            case "version":
-            case "about":
-                message.reply(`${process.env.npm_package_name}\nVersion \`${process.env.npm_package_version}\``);
-                break;
-            case "teamlist":
-                if (destProjectId == undefined)
-                    return;
-                message.channel.sendTyping();
-                try {
-                    const tlist = await terrariaTeams();
-                    const dir = await mkdtemp(`${tmpdir()}${sep}`);
-                    const file = dir + sep + "teamlist.csv";
-                    let s = "";
-                    tlist.forEach(row => {
-                        s += `${row.gitlab_id},${row.team_id},${row.team_color}\n`;
-                    });
-                    writeFileSync(file, s);
-                    await message.reply({ files: [file] });
-                    rm(dir, { recursive: true, force: true });
-                } catch (err) {
-                    console.error(err);
-                }
-                break;
-            case "mlist":
-                if (destProjectId == undefined)
-                    return;
-                message.channel.sendTyping();
-                try {
-                    const mlist = await mlistCsv(destProjectId);
-                    const dir = await mkdtemp(`${tmpdir()}${sep}`);
-                    const file = dir + sep + "mlist.csv";
-                    writeFileSync(file, mlist);
-                    await message.reply({ files: [file] });
-                    rm(dir, { recursive: true, force: true });
-                } catch (err) {
-                    console.error(err);
-                }
-                break;
-            default:
-                await message.reply(`コマンド \`${cmds.join(" ")}\` を解釈できません。`);
-                break;
-        }
+        await parseCommand(message);
     }
-});
+}
+client.on("message", onMessage);
+
+process.on("beforeExit", () => {
+    if (client.isReady())
+        client.destroy();
+})
 
 console.log(`${process.env.npm_package_name}\nVersion ${process.env.npm_package_version}`);
 client.login(discordBotToken);
@@ -157,3 +119,58 @@ where gitlab_id is not null ;`;
     const r = await pg.query(sql);
     return r.rows;
 }
+
+async function parseCommand(message: Message<boolean>): Promise<void> {
+    const cmds = message.content.split(" ").slice(1).filter((value) => value.trim() !== "");
+    console.log(`Commands: ${cmds.join(", ")}`);
+    switch (cmds[0]?.trim()) {
+        case "v":
+        case "version":
+        case "about":
+            message.reply(`${process.env.npm_package_name}\nVersion \`${process.env.npm_package_version}\``);
+            break;
+        case "issue":
+            switch (cmds[1]?.trim()) {
+
+            }
+            break;
+        case "teamlist":
+            if (destProjectId == undefined)
+                return;
+            message.channel.sendTyping();
+            try {
+                const tlist = await terrariaTeams();
+                const dir = await mkdtemp(`${tmpdir()}${sep}`);
+                const file = dir + sep + "teamlist.csv";
+                let s = "";
+                tlist.forEach(row => {
+                    s += `${row.gitlab_id},${row.team_id},${row.team_color}\n`;
+                });
+                writeFileSync(file, s);
+                await message.reply({ files: [file] });
+                rm(dir, { recursive: true, force: true });
+            } catch (err) {
+                console.error(err);
+            }
+            break;
+        case "mlist":
+            if (destProjectId == undefined)
+                return;
+            message.channel.sendTyping();
+            try {
+                const mlist = await mlistCsv(destProjectId);
+                const dir = await mkdtemp(`${tmpdir()}${sep}`);
+                const file = dir + sep + "mlist.csv";
+                writeFileSync(file, mlist);
+                await message.reply({ files: [file] });
+                rm(dir, { recursive: true, force: true });
+            } catch (err) {
+                console.error(err);
+            }
+            break;
+        default:
+            await message.reply(`コマンド \`${cmds.join(" ")}\` を解釈できません。`);
+            break;
+    }
+}
+
