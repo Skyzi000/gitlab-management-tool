@@ -1,4 +1,5 @@
 import { Gitlab } from "@gitbeaker/node";
+import { Argument, Command } from "commander";
 import { Client, Intents, Message, TextBasedChannels } from "discord.js";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { mkdtemp, rm } from "fs/promises";
@@ -102,75 +103,128 @@ client.login(discordBotToken);
 
 async function mlistCsv(projectId: string | number) {
     let mlist: string = "";
+    const teamColors = await gitlabMemberTeamColors();
     await gitlab.ProjectMembers.all(projectId, { includeInherited: true }).then((members) => {
         members.forEach(m => {
-            mlist += `${m.id},${m.name},${m.username}\n`;
+            const labId = Number(m.id);
+            mlist += `${m.id},${m.name},${m.username},${labId in teamColors ? teamColors[labId] : "null"}\n`;
         });
     });
     return mlist;
 }
 
-async function terrariaTeams() {
+async function teamList() {
     const pg = new Postgres();
-    const sql = `select gitlab_id, gm.team_id, t.team_color from gitlab_member gm
-inner join team t
-on gm.team_id = t.team_id
-where gitlab_id is not null ;`;
+    const sql = `select * from team;`;
     const r = await pg.query(sql);
     return r.rows;
 }
 
-async function parseCommand(message: Message<boolean>): Promise<void> {
-    const cmds = message.content.split(" ").slice(1).filter((value) => value.trim() !== "");
-    console.log(`Commands: ${cmds.join(", ")}`);
-    switch (cmds[0]?.trim()) {
-        case "v":
-        case "version":
-        case "about":
-            message.reply(`${process.env.npm_package_name}\nVersion \`${process.env.npm_package_version}\``);
-            break;
-        case "issue":
-            switch (cmds[1]?.trim()) {
-
-            }
-            break;
-        case "teamlist":
-            if (destProjectId == undefined)
-                return;
-            message.channel.sendTyping();
-            try {
-                const tlist = await terrariaTeams();
-                const dir = await mkdtemp(`${tmpdir()}${sep}`);
-                const file = dir + sep + "teamlist.csv";
-                let s = "";
-                tlist.forEach(row => {
-                    s += `${row.gitlab_id},${row.team_id},${row.team_color}\n`;
-                });
-                writeFileSync(file, s);
-                await message.reply({ files: [file] });
-                rm(dir, { recursive: true, force: true });
-            } catch (err) {
-                console.error(err);
-            }
-            break;
-        case "mlist":
-            if (destProjectId == undefined)
-                return;
-            message.channel.sendTyping();
-            try {
-                const mlist = await mlistCsv(destProjectId);
-                const dir = await mkdtemp(`${tmpdir()}${sep}`);
-                const file = dir + sep + "mlist.csv";
-                writeFileSync(file, mlist);
-                await message.reply({ files: [file] });
-                rm(dir, { recursive: true, force: true });
-            } catch (err) {
-                console.error(err);
-            }
-            break;
-        default:
-            await message.reply(`コマンド \`${cmds.join(" ")}\` を解釈できません。`);
-            break;
-    }
+async function gitlabMemberTeamColors() {
+    const pg = new Postgres();
+    const sql = `select gitlab_id, t.team_color from gitlab_member gm
+left outer join team t
+on gm.team_id = t.team_id
+where gitlab_id is not null ;`;
+    const r = await pg.query(sql);
+    const teamColors: { [gitlabUserId: number]: string } = {};
+    r.rows.forEach(row => {
+        teamColors[Number(row.gitlab_id)] = row.team_color;
+    })
+    return teamColors;
 }
 
+async function parseCommand(message: Message<boolean>): Promise<void> {
+    // 入力中...で反応していることを返す
+    message.channel.sendTyping();
+
+    // コマンドの実装
+    const execLs: (...args: any[]) => void | Promise<void> = async (type, project, options, command) => {
+        const projectId = project == "test" ? testProjectId :
+            project == "dest" ? destProjectId :
+                project == "source" ? srcProjectId : undefined;
+
+        switch (type) {
+            case "member":
+                if (projectId == undefined) {
+                    await message.reply("プロジェクトIDが設定されていません！");
+                    return;
+                }
+                try {
+                    const rows = await mlistCsv(projectId);
+                    const dir = await mkdtemp(`${tmpdir()}${sep}`);
+                    const file = dir + sep + "memberlist.csv";
+                    writeFileSync(file, rows);
+                    await message.reply({ files: [file] });
+                    rm(dir, { recursive: true, force: true });
+                } catch (err) {
+                    await message.reply(`:warning: ${err}`);
+                }
+                break;
+
+            case "team":
+                try {
+                    const rows = await teamList();
+                    const dir = await mkdtemp(`${tmpdir()}${sep}`);
+                    const file = dir + sep + "teamlist.csv";
+                    let s = "";
+                    rows.forEach(row => {
+                        s += `${row.team_id},${row.team_color}\n`;
+                    });
+                    writeFileSync(file, s);
+                    await message.reply({ files: [file] });
+                    rm(dir, { recursive: true, force: true });
+                } catch (err) {
+                    await message.reply(`:warning: ${err}`);
+                }
+                break;
+
+            case "issue":
+                try {
+                    throw new Error("Function not implemented.");
+                } catch (err) {
+                    await message.reply(`:warning: ${err}`);
+                }
+
+            default:
+                break;
+        }
+    };
+
+
+    // コマンドの設定
+
+    const bot = new Command();
+    bot.name(`<@${message.client.user?.id}>`)
+    // bot.allowUnknownOption(true).allowExcessArguments(true);
+    bot.exitOverride();
+    bot.configureOutput({
+        writeOut: (str) => message.reply(str),
+        writeErr: (str) => message.reply(`:warning: ${str}`)
+    });
+    bot
+        .command("about")
+        .description("Botの情報を返します。")
+        .action(() => {
+            message.reply(`${process.env.npm_package_name}\n${process.env.npm_package_description}\nVersion \`${process.env.npm_package_version}\``);
+        });
+
+    bot
+        .command("ls")
+        .description("各種データをリストにします。")
+        .addArgument(new Argument("<type>", "種類").choices(["member", "team", "issue"]))
+        .addArgument(new Argument("[project]", "対象のプロジェクト").choices(["test", "dest", "source"]).default("test"))
+        .option("--csv", "データをCSV形式のファイルにします(デフォルト)", true)
+        .action(execLs);
+
+    // コマンドのパース処理・実行
+    const cmds = message.content.split(" ").slice(1).filter((value) => value.trim() !== "");
+    try {
+        await bot.parseAsync(cmds, { from: "user" });
+    } catch (err) {
+        console.error(err);
+    }
+
+    // コマンド内容をコンソールに出力
+    console.log(`Commands: ${cmds.join(", ")}`);
+}
