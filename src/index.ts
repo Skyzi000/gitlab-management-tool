@@ -97,7 +97,7 @@ client.on("message", async message => {
                     const file = dir + sep + "teamlist.csv";
                     let s = "";
                     tlist.forEach(row => {
-                        s += `${row.gitlab_id},${row.terraria_team}\n`;
+                        s += `${row.gitlab_id},${row.team_id},${row.team_color}\n`;
                     });
                     writeFileSync(file, s);
                     await message.reply({ files: [file] });
@@ -142,6 +142,10 @@ async function mlistCsv(projectId: string | number) {
 
 async function terrariaTeams() {
     const pg = new Postgres();
-    const r = await pg.query(`SELECT gitlab_id, terraria_team FROM gitlab_member`);
+    const sql = `select gitlab_id, gm.team_id, t.team_color from gitlab_member gm
+inner join team t
+on gm.team_id = t.team_id
+where gitlab_id is not null ;`;
+    const r = await pg.query(sql);
     return r.rows;
 }
