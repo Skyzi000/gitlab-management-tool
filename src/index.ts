@@ -174,14 +174,14 @@ async function parseCommand(message: Message<boolean>): Promise<void> {
 
     bot
         .command("mkissue")
-        .description(`ソースプロジェクトのIssueをもとにIssueを発行します。
+        .description(`      ソースプロジェクトのIssueをもとにIssueを新規発行します。
         プロジェクトマイルストーンはコピーされます。
         所属チームを表す\`2\`以外のタグ(\`0\`, \`1\`, \`3\`)はそのままコピーされ、\`1\`のタグによって個人に対して発行するかどうか判断します。
         個人に対して発行されたIssueには自動的に該当する人がAssignされ、その人の所属するチームの\`2\`タグが付与されます。
         また、個人に対して発行するIssueは\`3\`の役職タグに従い、該当する役職の人にのみ発行されます。
         チームに対して発行するIssueは、各チームに対して一つずつ発行されます。\n`)
-        .addArgument(new Argument("[project]", "対象のプロジェクト").choices(["test", "dest", "source"]).default("test"))
-        .option("-c, --close", "ソースプロジェクトのIssueをCloseするか(デフォルト)", true)
+        .addArgument(new Argument("[project]", "対象のプロジェクト").choices(["test", "dest"]).default("test"))
+        .option("-c, --close", "ソースプロジェクトのIssueをCloseするか", true)
         .action(execMkissue(message));
 
 
