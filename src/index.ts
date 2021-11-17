@@ -62,6 +62,7 @@ const gitlab = new Gitlab({ token: gitlabToken });
 
 const destProjectId = process.env.GITLAB_DEST_PROJECT_ID;
 const srcProjectId = process.env.GITLAB_SOURCE_PROJECT_ID;
+const testProjectId = process.env.GITLAB_TEST_PROJECT_ID;
 
 const client: Client = new Client({
     intents: [
@@ -77,6 +78,7 @@ client.once("ready", async () => {
         console.log("client.user is null!");
         return;
     }
+    client.user.setActivity({ name: `Version ${process.env.npm_package_version}` });
     console.log(`${client.user.username} is ready!`);
 });
 client.on("message", async message => {
@@ -87,7 +89,11 @@ client.on("message", async message => {
         const cmds = message.content.split(" ").slice(1).filter((value) => value.trim() !== "");
         console.log(`Commands: ${cmds.join(", ")}`);
         switch (cmds[0]?.trim()) {
-
+            case "v":
+            case "version":
+            case "about":
+                message.reply(`${process.env.npm_package_name}\nVersion \`${process.env.npm_package_version}\``);
+                break;
             case "teamlist":
                 if (destProjectId == undefined)
                     return;
@@ -129,6 +135,7 @@ client.on("message", async message => {
     }
 });
 
+console.log(`${process.env.npm_package_name}\nVersion ${process.env.npm_package_version}`);
 client.login(discordBotToken);
 
 async function mlistCsv(projectId: string | number) {
