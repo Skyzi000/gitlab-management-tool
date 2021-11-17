@@ -60,7 +60,8 @@ else {
 
 const gitlab = new Gitlab({ token: gitlabToken });
 
-const projectId = process.env.GITLAB_PROJECT_ID;
+const destProjectId = process.env.GITLAB_DEST_PROJECT_ID;
+const srcProjectId = process.env.GITLAB_SOURCE_PROJECT_ID;
 
 const client: Client = new Client({
     intents: [
@@ -78,7 +79,6 @@ client.once("ready", async () => {
     }
     console.log(`${client.user.username} is ready!`);
 });
-
 client.on("message", async message => {
     if (message.author.bot || message.guildId == null || client.user == null || !(message.channel.type === "GUILD_TEXT" || message.channel.type === "GUILD_NEWS") || message.channelId !== process.env.DISCORD_CHANNEL_ID) {
         return;
@@ -87,8 +87,9 @@ client.on("message", async message => {
         const cmds = message.content.split(" ").slice(1).filter((value) => value.trim() !== "");
         console.log(`Commands: ${cmds.join(", ")}`);
         switch (cmds[0]?.trim()) {
+
             case "teamlist":
-                if (projectId == undefined)
+                if (destProjectId == undefined)
                     return;
                 message.channel.sendTyping();
                 try {
@@ -107,11 +108,11 @@ client.on("message", async message => {
                 }
                 break;
             case "mlist":
-                if (projectId == undefined)
+                if (destProjectId == undefined)
                     return;
                 message.channel.sendTyping();
                 try {
-                    const mlist = await mlistCsv(projectId);
+                    const mlist = await mlistCsv(destProjectId);
                     const dir = await mkdtemp(`${tmpdir()}${sep}`);
                     const file = dir + sep + "mlist.csv";
                     writeFileSync(file, mlist);
