@@ -1,3 +1,4 @@
+import { IssueSchema, MilestoneSchema, UserSchema } from "@gitbeaker/core/dist/types/types";
 import { Gitlab } from "@gitbeaker/node";
 import { Argument, Command } from "commander";
 import { Client, Intents, Message, TextBasedChannels } from "discord.js";
@@ -134,6 +135,15 @@ where gitlab_id is not null ;`;
     return teamColors;
 }
 
+async function gitlabIssuesCsv(projectId: string | number) {
+    const issues = await gitlab.Issues.all({ projectId, state: "opened" });
+    let csv = "id,iid,title,state,created_at,labels,milestone_id,milestone_title,assignee_id\n";
+    issues.forEach(i => {
+        csv += `${i.id},${i.iid},${i.title},${i.state},${i.created_at},${i.labels},${(i.milestone as MilestoneSchema)?.id},${(i.milestone as MilestoneSchema)?.title},${(i.assignee as UserSchema)?.id}\n`;
+    });
+    return csv;
+}
+
 async function parseCommand(message: Message<boolean>): Promise<void> {
     // 入力中...で反応していることを返す
     message.channel.sendTyping();
@@ -151,10 +161,10 @@ async function parseCommand(message: Message<boolean>): Promise<void> {
                     return;
                 }
                 try {
-                    const rows = await mlistCsv(projectId);
+                    const csv = await mlistCsv(projectId);
                     const dir = await mkdtemp(`${tmpdir()}${sep}`);
-                    const file = dir + sep + "memberlist.csv";
-                    writeFileSync(file, rows);
+                    const file = `${dir}${sep}${type}list_${project}.csv`;
+                    writeFileSync(file, csv);
                     await message.reply({ files: [file] });
                     rm(dir, { recursive: true, force: true });
                 } catch (err) {
@@ -166,7 +176,7 @@ async function parseCommand(message: Message<boolean>): Promise<void> {
                 try {
                     const rows = await teamList();
                     const dir = await mkdtemp(`${tmpdir()}${sep}`);
-                    const file = dir + sep + "teamlist.csv";
+                    const file = `${dir}${sep}${type}list.csv`;
                     let s = "";
                     rows.forEach(row => {
                         s += `${row.team_id},${row.team_color}\n`;
@@ -180,8 +190,17 @@ async function parseCommand(message: Message<boolean>): Promise<void> {
                 break;
 
             case "issue":
+                if (projectId == undefined) {
+                    await message.reply("プロジェクトIDが設定されていません！");
+                    return;
+                }
                 try {
-                    throw new Error("Function not implemented.");
+                    const csv = await gitlabIssuesCsv(projectId);
+                    const dir = await mkdtemp(`${tmpdir()}${sep}`);
+                    const file = `${dir}${sep}${type}list_${project}.csv`;
+                    writeFileSync(file, csv);
+                    await message.reply({ files: [file] });
+                    rm(dir, { recursive: true, force: true });
                 } catch (err) {
                     await message.reply(`:warning: ${err}`);
                 }
