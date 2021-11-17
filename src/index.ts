@@ -148,8 +148,57 @@ async function parseCommand(message: Message<boolean>): Promise<void> {
     // 入力中...で反応していることを返す
     message.channel.sendTyping();
 
-    // コマンドの実装
-    const execLs: (...args: any[]) => void | Promise<void> = async (type, project, options, command) => {
+    // コマンドの設定
+
+    const bot = new Command();
+    bot.name(`<@${message.client.user?.id}>`)
+    // bot.allowUnknownOption(true).allowExcessArguments(true);
+    bot.exitOverride();
+    bot.configureOutput({
+        writeOut: (str) => message.reply(str),
+        writeErr: (str) => message.reply(`:warning: ${str}`)
+    });
+    bot
+        .command("about")
+        .description("Botの情報を返します。\n")
+        .action(() => {
+            message.reply(`${process.env.npm_package_name}\n${process.env.npm_package_description}\nVersion \`${process.env.npm_package_version}\``);
+        });
+
+    bot
+        .command("ls")
+        .description("各種データをCSV形式のファイルにまとめて返します。\n")
+        .addArgument(new Argument("<type>", "種類").choices(["member", "team", "issue", "milestone"]))
+        .addArgument(new Argument("[project]", "対象のプロジェクト").choices(["test", "dest", "source"]).default("test"))
+        .action(execLs(message));
+
+    bot
+        .command("mkissue")
+        .description(`ソースプロジェクトのIssueをもとにIssueを発行します。
+        プロジェクトマイルストーンはコピーされます。
+        所属チームを表す\`2\`以外のタグ(\`0\`, \`1\`, \`3\`)はそのままコピーされ、\`1\`のタグによって個人に対して発行するかどうか判断します。
+        個人に対して発行されたIssueには自動的に該当する人がAssignされ、その人の所属するチームの\`2\`タグが付与されます。
+        また、個人に対して発行するIssueは\`3\`の役職タグに従い、該当する役職の人にのみ発行されます。
+        チームに対して発行するIssueは、各チームに対して一つずつ発行されます。\n`)
+        .addArgument(new Argument("[project]", "対象のプロジェクト").choices(["test", "dest", "source"]).default("test"))
+        .option("-c, --close", "ソースプロジェクトのIssueをCloseするか(デフォルト)", true)
+        .action(execMkissue(message));
+
+
+    // コマンドのパース処理・実行
+    const cmds = message.content.split(" ").slice(1).filter((value) => value.trim() !== "");
+    try {
+        await bot.parseAsync(cmds, { from: "user" });
+    } catch (err) {
+        console.error(err);
+    }
+
+    // コマンド内容をコンソールに出力
+    console.log(`Commands: ${cmds.join(", ")}`);
+}
+
+function execLs(message: Message<boolean>): (...args: any[]) => Promise<void> {
+    return async (type, project, options, command) => {
         const projectId = project == "test" ? testProjectId :
             project == "dest" ? destProjectId :
                 project == "source" ? srcProjectId : undefined;
@@ -204,46 +253,38 @@ async function parseCommand(message: Message<boolean>): Promise<void> {
                 } catch (err) {
                     await message.reply(`:warning: ${err}`);
                 }
+                break;
+
+            case "milestone":
+                if (projectId == undefined) {
+                    await message.reply("プロジェクトIDが設定されていません！");
+                    return;
+                }
+                try {
+                    throw new Error("未実装です");
+                    // const csv = await gitlabIssuesCsv(projectId);
+                    // const dir = await mkdtemp(`${tmpdir()}${sep}`);
+                    // const file = `${dir}${sep}${type}list_${project}.csv`;
+                    // writeFileSync(file, csv);
+                    // await message.reply({ files: [file] });
+                    // rm(dir, { recursive: true, force: true });
+                } catch (err) {
+                    await message.reply(`:warning: ${err}`);
+                }
 
             default:
                 break;
         }
     };
-
-
-    // コマンドの設定
-
-    const bot = new Command();
-    bot.name(`<@${message.client.user?.id}>`)
-    // bot.allowUnknownOption(true).allowExcessArguments(true);
-    bot.exitOverride();
-    bot.configureOutput({
-        writeOut: (str) => message.reply(str),
-        writeErr: (str) => message.reply(`:warning: ${str}`)
-    });
-    bot
-        .command("about")
-        .description("Botの情報を返します。")
-        .action(() => {
-            message.reply(`${process.env.npm_package_name}\n${process.env.npm_package_description}\nVersion \`${process.env.npm_package_version}\``);
-        });
-
-    bot
-        .command("ls")
-        .description("各種データをリストにします。")
-        .addArgument(new Argument("<type>", "種類").choices(["member", "team", "issue"]))
-        .addArgument(new Argument("[project]", "対象のプロジェクト").choices(["test", "dest", "source"]).default("test"))
-        .option("--csv", "データをCSV形式のファイルにします(デフォルト)", true)
-        .action(execLs);
-
-    // コマンドのパース処理・実行
-    const cmds = message.content.split(" ").slice(1).filter((value) => value.trim() !== "");
-    try {
-        await bot.parseAsync(cmds, { from: "user" });
-    } catch (err) {
-        console.error(err);
-    }
-
-    // コマンド内容をコンソールに出力
-    console.log(`Commands: ${cmds.join(", ")}`);
 }
+
+function execMkissue(message: Message<boolean>): (...args: any[]) => Promise<void> {
+    return async (project, close) => {
+        try {
+            throw new Error("未実装です");
+        } catch (err) {
+            await message.reply(`:warning: ${err}`);
+        }
+    };
+}
+
