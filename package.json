@@ -37,6 +37,7 @@
   },
   "dependencies": {
     "@gitbeaker/node": "^34.6.0",
+    "commander": "^8.3.0",
     "discord.js": "^13.3.1",
     "pg": "^8.7.1"
   }
