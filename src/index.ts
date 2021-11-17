@@ -4,6 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { sep } from "path";
+import { Postgres } from "./postgres";
 
 let gitlabToken: string;
 let discordBotToken: string;
@@ -86,6 +87,25 @@ client.on("message", async message => {
         const cmds = message.content.split(" ").slice(1).filter((value) => value.trim() !== "");
         console.log(`Commands: ${cmds.join(", ")}`);
         switch (cmds[0]?.trim()) {
+            case "teamlist":
+                if (projectId == undefined)
+                    return;
+                message.channel.sendTyping();
+                try {
+                    const tlist = await terrariaTeams();
+                    const dir = await mkdtemp(`${tmpdir()}${sep}`);
+                    const file = dir + sep + "teamlist.csv";
+                    let s = "";
+                    tlist.forEach(row => {
+                        s += `${row.gitlab_id},${row.terraria_team}\n`;
+                    });
+                    writeFileSync(file, s);
+                    await message.reply({ files: [file] });
+                    rm(dir, { recursive: true, force: true });
+                } catch (err) {
+                    console.error(err);
+                }
+                break;
             case "mlist":
                 if (projectId == undefined)
                     return;
@@ -120,3 +140,8 @@ async function mlistCsv(projectId: string | number) {
     return mlist;
 }
 
+async function terrariaTeams() {
+    const pg = new Postgres();
+    const r = await pg.query(`SELECT gitlab_id, terraria_team FROM gitlab_member`);
+    return r.rows;
+}
