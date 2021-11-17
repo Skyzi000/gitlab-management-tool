@@ -99,9 +99,6 @@ process.on("beforeExit", () => {
         client.destroy();
 })
 
-console.log(`${process.env.npm_package_name}\nVersion ${process.env.npm_package_version}`);
-client.login(discordBotToken);
-
 async function mlistCsv(projectId: string | number) {
     let mlist: string = "";
     const teamColors = await gitlabMemberTeamColors();
@@ -162,7 +159,10 @@ async function parseCommand(message: Message<boolean>): Promise<void> {
         .command("about")
         .description("Botの情報を返します。\n")
         .action(() => {
-            message.reply(`${process.env.npm_package_name}\n${process.env.npm_package_description}\nVersion \`${process.env.npm_package_version}\``);
+            const pj = require("../package.json");
+            message.reply(`${message.client.user?.username}について\nパッケージ情報\n\`\`\`
+${process.env.npm_package_name}\n${pj.description}\nVersion ${process.env.npm_package_version}
+Dependencies:\n${pj.dependencies}\n\`\`\``);
         });
 
     bot
@@ -174,7 +174,7 @@ async function parseCommand(message: Message<boolean>): Promise<void> {
 
     bot
         .command("mkissue")
-        .description(`      ソースプロジェクトのIssueをもとにIssueを新規発行します。
+        .description(`        ソースプロジェクトのIssueをもとにIssueを新規発行します。
         プロジェクトマイルストーンはコピーされます。
         所属チームを表す\`2\`以外のタグ(\`0\`, \`1\`, \`3\`)はそのままコピーされ、\`1\`のタグによって個人に対して発行するかどうか判断します。
         個人に対して発行されたIssueには自動的に該当する人がAssignされ、その人の所属するチームの\`2\`タグが付与されます。
@@ -288,3 +288,7 @@ function execMkissue(message: Message<boolean>): (...args: any[]) => Promise<voi
     };
 }
 
+console.log(`${process.env.npm_package_name}\nVersion ${process.env.npm_package_version}`);
+console.log(require("../package.json").description);
+
+client.login(discordBotToken);
