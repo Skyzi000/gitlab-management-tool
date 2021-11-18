@@ -21,7 +21,7 @@ export function execLs(message: Message<boolean>): (...args: any[]) => Promise<v
                 }
                 try {
                     const csv = await (options.local || !projectId ? localMemberListCsv() : gitlabMemberListCsv(projectId));
-                    await replyCsv(type, options.local ? "local" : project, csv);
+                    await replyCsv(csv, type, options.local ? "local" : project);
                 } catch (err) {
                     await message.reply(`:warning: ${err}`);
                 }
