@@ -109,16 +109,32 @@ process.on("beforeExit", () => {
         client.destroy();
 })
 
-async function mlistCsv(projectId: string | number) {
-    let mlist: string = "";
+
+async function localMemberListCsv() {
+    const pg = new Postgres();
+    const sql = `select gm.student_id, gm.name, gm.gitlab_id, gm.gitlab_email, t.team_id, t.team_color
+from gitlab_member gm
+left outer join team t
+on gm.team_id = t.team_id ;`;
+    const qResult = await pg.query(sql);
+    let csv = `${qResult.fields.map(f=>f.name).join(",")}\n`;
+    const members = qResult.rows;
+    members.forEach(gm => {
+        csv += `${gm.student_id},${gm.name},${gm.gitlab_id},${gm.gitlab_email},${gm.team_id},${gm.team_color}\n`;
+    });
+    return csv;
+}
+
+async function gitlabMemberListCsv(projectId: string | number) {
+    let csv: string = "";
     const teamColors = await gitlabMemberTeamColors();
     await gitlab.ProjectMembers.all(projectId, { includeInherited: true }).then((members) => {
         members.forEach(m => {
             const labId = Number(m.id);
-            mlist += `${m.id},${m.name},${m.username},${labId in teamColors ? teamColors[labId] : "null"}\n`;
+            csv += `${m.id},${m.name},${m.username},${labId in teamColors ? teamColors[labId] : "null"}\n`;
         });
     });
-    return mlist;
+    return csv;
 }
 
 async function teamList() {
@@ -179,6 +195,7 @@ async function parseCommand(message: Message<boolean>): Promise<void> {
         .description("各種データをCSV形式のファイルにまとめて返します。\n")
         .addArgument(new Argument("<type>", "種類").choices(["member", "team", "issue", "milestone"]))
         .addArgument(new Argument("[project]", "対象のプロジェクト").choices(["test", "dest", "source"]).default("test"))
+        .option("-l, --local", "GitLabに問い合わせたりせず、ローカルのデータベース上の情報のみを返します。")
         .action(execLs(message));
 
     bot
@@ -215,14 +232,14 @@ function execLs(message: Message<boolean>): (...args: any[]) => Promise<void> {
 
         switch (type) {
             case "member":
-                if (projectId == undefined) {
+                if (projectId == undefined && !options.local) {
                     await message.reply("プロジェクトIDが設定されていません！");
                     return;
                 }
                 try {
-                    const csv = await mlistCsv(projectId);
+                    const csv = await (options.local || !projectId ? localMemberListCsv() : gitlabMemberListCsv(projectId));
                     const dir = await mkdtemp(`${tmpdir()}${sep}`);
-                    const file = `${dir}${sep}${type}list_${project}.csv`;
+                    const file = `${dir}${sep}${type}list_${options.local ? "local" : project}.csv`;
                     writeFileSync(file, csv);
                     await message.reply({ files: [file] });
                     rm(dir, { recursive: true, force: true });
