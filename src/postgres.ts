@@ -34,3 +34,25 @@ export class Postgres {
         await this.pool.end();
     }
 }
+
+export async function localMemberListCsv() {
+    const pg = new Postgres();
+    const sql = `select gm.student_id, gm.name, gm.gitlab_id, gm.gitlab_email, t.team_id, t.team_color
+from gitlab_member gm
+left outer join team t
+on gm.team_id = t.team_id ;`;
+    const qResult = await pg.query(sql);
+    let csv = `${qResult.fields.map(f => f.name).join(",")}\n`;
+    const members = qResult.rows;
+    members.forEach(gm => {
+        csv += `${gm.student_id},${gm.name},${gm.gitlab_id},${gm.gitlab_email},${gm.team_id},${gm.team_color}\n`;
+    });
+    return csv;
+}
+
+export async function teamList() {
+    const pg = new Postgres();
+    const sql = `select * from team;`;
+    const r = await pg.query(sql);
+    return r.rows;
+}

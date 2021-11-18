@@ -3,7 +3,9 @@ import { writeFileSync } from "fs";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { sep } from "path";
-import { testProjectId, destProjectId, srcProjectId, localMemberListCsv, gitlabMemberListCsv, teamList, gitlabIssuesCsv } from "./index";
+import { testProjectId, destProjectId, srcProjectId } from "./index";
+import { gitlabIssuesCsv, gitlabMemberListCsv } from "./gitlab";
+import { localMemberListCsv, teamList } from "./postgres";
 
 export function execLs(message: Message<boolean>): (...args: any[]) => Promise<void> {
     return async (type, project, options, command) => {

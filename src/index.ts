@@ -1,14 +1,11 @@
-import { IssueSchema, MilestoneSchema, UserSchema } from "@gitbeaker/core/dist/types/types";
 import { Gitlab } from "@gitbeaker/node";
-import { Argument, Command } from "commander";
 import { Client, Intents, Message, TextBasedChannels } from "discord.js";
 import { existsSync, readFileSync } from "fs";
-import { execLs } from "./execLs";
-import { Postgres } from "./postgres";
+import { parseCommand } from "./parseCommand";
 
 let gitlabToken: string;
 let discordBotToken: string;
-let botVersion: string | undefined;
+export let botVersion: string | undefined;
 
 if (process.env.NODE_ENV === "production") {
     const gitlabTokenFile = process.env.GITLAB_TOKEN_FILE;
@@ -68,7 +65,7 @@ else {
     botVersion = process.env.npm_package_version ?? "不明";
 }
 
-const gitlab = new Gitlab({ token: gitlabToken });
+export const gitlab = new Gitlab({ token: gitlabToken });
 
 export const destProjectId = process.env.GITLAB_DEST_PROJECT_ID;
 export const srcProjectId = process.env.GITLAB_SOURCE_PROJECT_ID;
@@ -105,124 +102,9 @@ client.on("message", onMessage);
 process.on("beforeExit", () => {
     if (client.isReady())
         client.destroy();
-})
+});
 
-
-export async function localMemberListCsv() {
-    const pg = new Postgres();
-    const sql = `select gm.student_id, gm.name, gm.gitlab_id, gm.gitlab_email, t.team_id, t.team_color
-from gitlab_member gm
-left outer join team t
-on gm.team_id = t.team_id ;`;
-    const qResult = await pg.query(sql);
-    let csv = `${qResult.fields.map(f=>f.name).join(",")}\n`;
-    const members = qResult.rows;
-    members.forEach(gm => {
-        csv += `${gm.student_id},${gm.name},${gm.gitlab_id},${gm.gitlab_email},${gm.team_id},${gm.team_color}\n`;
-    });
-    return csv;
-}
-
-export async function gitlabMemberListCsv(projectId: string | number) {
-    let csv: string = "";
-    const teamColors = await gitlabMemberTeamColors();
-    await gitlab.ProjectMembers.all(projectId, { includeInherited: true }).then((members) => {
-        members.forEach(m => {
-            const labId = Number(m.id);
-            csv += `${m.id},${m.name},${m.username},${labId in teamColors ? teamColors[labId] : "null"}\n`;
-        });
-    });
-    return csv;
-}
-
-export async function teamList() {
-    const pg = new Postgres();
-    const sql = `select * from team;`;
-    const r = await pg.query(sql);
-    return r.rows;
-}
-
-async function gitlabMemberTeamColors() {
-    const pg = new Postgres();
-    const sql = `select gitlab_id, t.team_color from gitlab_member gm
-left outer join team t
-on gm.team_id = t.team_id
-where gitlab_id is not null ;`;
-    const r = await pg.query(sql);
-    const teamColors: { [gitlabUserId: number]: string } = {};
-    r.rows.forEach(row => {
-        teamColors[Number(row.gitlab_id)] = row.team_color;
-    })
-    return teamColors;
-}
-
-export async function gitlabIssuesCsv(projectId: string | number) {
-    const issues = await gitlab.Issues.all({ projectId, state: "opened" });
-    let csv = "id,iid,title,state,created_at,labels,milestone_id,milestone_title,assignee_id\n";
-    issues.forEach(i => {
-        csv += `${i.id},${i.iid},${i.title},${i.state},${i.created_at},${i.labels},${(i.milestone as MilestoneSchema)?.id},${(i.milestone as MilestoneSchema)?.title},${(i.assignee as UserSchema)?.id}\n`;
-    });
-    return csv;
-}
-
-async function parseCommand(message: Message<boolean>): Promise<void> {
-    // 入力中...で反応していることを返す
-    message.channel.sendTyping();
-
-    // コマンドの設定
-
-    const bot = new Command();
-    bot.name(`<@${message.client.user?.id}>`)
-    // bot.allowUnknownOption(true).allowExcessArguments(true);
-    bot.exitOverride();
-    bot.configureOutput({
-        writeOut: (str) => message.reply(str),
-        writeErr: (str) => message.reply(`:warning: ${str}`)
-    });
-    bot
-        .command("version")
-        .aliases(["v", "V", "ver", "about"])
-        .description("バージョン情報を返します。\n")
-        .action(() => {
-            message.reply(`${message.client.user?.username}について\n\`\`\`\nVersion ${botVersion}\n\`\`\``);
-        });
-
-    bot
-        .command("ls")
-        .aliases(["list", "csv", "csvlist"])
-        .description("各種データをCSV形式のファイルにまとめて返します。\n")
-        .addArgument(new Argument("<type>", "種類").choices(["member", "team", "issue", "milestone"]))
-        .addArgument(new Argument("[project]", "対象のプロジェクト").choices(["test", "dest", "source"]).default("test"))
-        .option("-l, --local", "GitLabに問い合わせたりせず、ローカルのデータベース上の情報のみを返します。")
-        .action(execLs(message));
-
-    bot
-        .command("mkissue")
-        .aliases(["mkissues", "makeissue", "pubissue", "pubissues", "publishissue", "publishissues"])
-        .description(`        ソースプロジェクトのIssueをもとにIssueを新規発行します。
-        プロジェクトマイルストーンはコピーされます。
-        所属チームを表す\`2\`以外のタグ(\`0\`, \`1\`, \`3\`)はそのままコピーされ、\`1\`のタグによって個人に対して発行するかどうか判断します。
-        個人に対して発行されたIssueには自動的に該当する人がAssignされ、その人の所属するチームの\`2\`タグが付与されます。
-        また、個人に対して発行するIssueは\`3\`の役職タグに従い、該当する役職の人にのみ発行されます。
-        チームに対して発行するIssueは、各チームに対して一つずつ発行されます。\n`)
-        .addArgument(new Argument("[project]", "対象のプロジェクト").choices(["test", "dest"]).default("test"))
-        .option("-c, --close", "ソースプロジェクトのIssueをCloseするか", true)
-        .action(execMkissue(message));
-
-
-    // コマンドのパース処理・実行
-    const cmds = message.content.split(" ").slice(1).filter((value) => value.trim() !== "");
-    try {
-        await bot.parseAsync(cmds, { from: "user" });
-    } catch (err) {
-        console.error(err);
-    }
-
-    // コマンド内容をコンソールに出力
-    console.log(`Commands: ${cmds.join(", ")}`);
-}
-
-function execMkissue(message: Message<boolean>): (...args: any[]) => Promise<void> {
+export function execMkissue(message: Message<boolean>): (...args: any[]) => Promise<void> {
     return async (project, close) => {
         try {
             throw new Error("未実装です");
