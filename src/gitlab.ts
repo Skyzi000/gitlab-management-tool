@@ -11,6 +11,16 @@ export async function gitlabIssuesCsv(projectId: string | number) {
     });
     return csv;
 }
+
+export async function gitlabMilestonesCsv(projectId: string | number) {
+    const milestones = await gitlab.ProjectMilestones.all(projectId);
+    let csv = "id,iid,title,state,created_at,expired\n";
+    milestones.forEach(m => {
+        csv += `${m.id},${m.iid},${m.title},${m.state},${m.created_at},${m.expired}\n`;
+    });
+    return csv;
+}
+
 export async function gitlabMemberListCsv(projectId: string | number) {
     let csv: string = "";
     const teamColors = await gitlabMemberTeamColors();

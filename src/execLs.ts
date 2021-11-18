@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { sep } from "path";
 import { testProjectId, destProjectId, srcProjectId } from "./index";
-import { gitlabIssuesCsv, gitlabMemberListCsv } from "./gitlab";
+import { gitlabIssuesCsv, gitlabMemberListCsv, gitlabMilestonesCsv } from "./gitlab";
 import { localMemberListCsv, teamList } from "./postgres";
 
 export function execLs(message: Message<boolean>): (...args: any[]) => Promise<void> {
@@ -21,11 +21,7 @@ export function execLs(message: Message<boolean>): (...args: any[]) => Promise<v
                 }
                 try {
                     const csv = await (options.local || !projectId ? localMemberListCsv() : gitlabMemberListCsv(projectId));
-                    const dir = await mkdtemp(`${tmpdir()}${sep}`);
-                    const file = `${dir}${sep}${type}list_${options.local ? "local" : project}.csv`;
-                    writeFileSync(file, csv);
-                    await message.reply({ files: [file] });
-                    rm(dir, { recursive: true, force: true });
+                    await replyCsv(type, options.local ? "local" : project, csv);
                 } catch (err) {
                     await message.reply(`:warning: ${err}`);
                 }
@@ -34,15 +30,11 @@ export function execLs(message: Message<boolean>): (...args: any[]) => Promise<v
             case "team":
                 try {
                     const rows = await teamList();
-                    const dir = await mkdtemp(`${tmpdir()}${sep}`);
-                    const file = `${dir}${sep}${type}list.csv`;
-                    let s = "";
+                    let csv = "";
                     rows.forEach(row => {
-                        s += `${row.team_id},${row.team_color}\n`;
+                        csv += `${row.team_id},${row.team_color}\n`;
                     });
-                    writeFileSync(file, s);
-                    await message.reply({ files: [file] });
-                    rm(dir, { recursive: true, force: true });
+                    await replyCsv(csv, type);
                 } catch (err) {
                     await message.reply(`:warning: ${err}`);
                 }
@@ -54,12 +46,10 @@ export function execLs(message: Message<boolean>): (...args: any[]) => Promise<v
                     return;
                 }
                 try {
+                    if (options.local)
+                        throw new Error(`ローカルデータベースの${type}リストは未実装です。`);
                     const csv = await gitlabIssuesCsv(projectId);
-                    const dir = await mkdtemp(`${tmpdir()}${sep}`);
-                    const file = `${dir}${sep}${type}list_${project}.csv`;
-                    writeFileSync(file, csv);
-                    await message.reply({ files: [file] });
-                    rm(dir, { recursive: true, force: true });
+                    await replyCsv(csv, type, project);
                 } catch (err) {
                     await message.reply(`:warning: ${err}`);
                 }
@@ -71,13 +61,10 @@ export function execLs(message: Message<boolean>): (...args: any[]) => Promise<v
                     return;
                 }
                 try {
-                    throw new Error("未実装です");
-                    // const csv = await gitlabIssuesCsv(projectId);
-                    // const dir = await mkdtemp(`${tmpdir()}${sep}`);
-                    // const file = `${dir}${sep}${type}list_${project}.csv`;
-                    // writeFileSync(file, csv);
-                    // await message.reply({ files: [file] });
-                    // rm(dir, { recursive: true, force: true });
+                    if (options.local)
+                        throw new Error(`ローカルデータベースの${type}リストは未実装です。`);
+                    const csv = await gitlabMilestonesCsv(projectId);
+                    await replyCsv(csv, type, project);
                 } catch (err) {
                     await message.reply(`:warning: ${err}`);
                 }
@@ -86,4 +73,12 @@ export function execLs(message: Message<boolean>): (...args: any[]) => Promise<v
                 break;
         }
     };
+
+    async function replyCsv(csv: string, type?: string, project?: string) {
+        const dir = await mkdtemp(`${tmpdir()}${sep}`);
+        const file = `${dir}${sep}${type ?? ""}list${project ? `_${project}` : ""}.csv`;
+        writeFileSync(file, csv);
+        await message.reply({ files: [file] });
+        rm(dir, { recursive: true, force: true });
+    }
 }
