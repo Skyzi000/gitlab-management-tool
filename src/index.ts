@@ -1,72 +1,15 @@
 import { Gitlab } from "@gitbeaker/node";
 import { Client, Intents, Message, TextBasedChannels } from "discord.js";
-import { existsSync, readFileSync } from "fs";
+import { getEnvironments } from "./getEnvironments";
 import { parseCommand } from "./parseCommand";
 
-let gitlabToken: string;
-let discordBotToken: string;
-export let botVersion: string | undefined;
 
-if (process.env.NODE_ENV === "production") {
-    const gitlabTokenFile = process.env.GITLAB_TOKEN_FILE;
-    const discordTokenFile = process.env.DISCORD_BOT_TOKEN_FILE;
-    if (gitlabTokenFile === undefined || !existsSync(gitlabTokenFile)) {
-        if (process.env.GITLAB_TOKEN === undefined) {
-            console.error("'GITLAB_TOKEN'を設定してください。")
-            process.exit(1);
-        }
-        else {
-            gitlabToken = process.env.GITLAB_TOKEN;
-            console.warn(
-                "環境変数'GITLAB_TOKEN'ではなく、secretsの利用をお勧めします。\n" +
-                "参考: https://docs.docker.com/compose/compose-file/compose-file-v3/#secrets")
-        }
-    }
-    else {
-        gitlabToken = readFileSync(gitlabTokenFile, "utf-8").trim();
-    }
-    if (discordTokenFile === undefined || !existsSync(discordTokenFile)) {
-        if (process.env.DISCORD_BOT_TOKEN === undefined) {
-            console.error("'DISCORD_BOT_TOKEN'を設定してください。")
-            process.exit(1);
-        }
-        else {
-            discordBotToken = process.env.DISCORD_BOT_TOKEN;
-            console.warn(
-                "環境変数'DISCORD_BOT_TOKEN'ではなく、secretsの利用をお勧めします。\n" +
-                "参考: https://docs.docker.com/compose/compose-file/compose-file-v3/#secrets")
-        }
-    }
-    else {
-        discordBotToken = readFileSync(discordTokenFile, "utf-8").trim();
-    }
-    try {
-        botVersion = process.env.npm_package_version
-            ?? existsSync("./package.json") ? require("./package.json").version
-            : existsSync("../package.json") ? require("../package.json").version
-                : "不明";
-    } catch (err) {
-        console.error(err);
-    }
-}
-else {
-    // .envファイルから環境変数の読み込み
-    require("dotenv").config();
-    if (process.env.GITLAB_TOKEN === undefined) {
-        console.error("'GITLAB_TOKEN'を設定してください。")
-        process.exit(1);
-    }
-    if (process.env.DISCORD_BOT_TOKEN === undefined) {
-        console.error("'DISCORD_BOT_TOKEN'を設定してください。")
-        process.exit(1);
-    }
-    gitlabToken = process.env.GITLAB_TOKEN;
-    discordBotToken = process.env.DISCORD_BOT_TOKEN;
-    botVersion = process.env.npm_package_version ?? "不明";
-}
 
-export const gitlab = new Gitlab({ token: gitlabToken });
+const environments = getEnvironments();
 
+export const botVersion = environments.botVersion;
+
+export const gitlab = new Gitlab({ token: environments.gitlabToken });
 export const destProjectId = process.env.GITLAB_DEST_PROJECT_ID;
 export const srcProjectId = process.env.GITLAB_SOURCE_PROJECT_ID;
 export const testProjectId = process.env.GITLAB_TEST_PROJECT_ID;
@@ -85,9 +28,11 @@ client.once("ready", async () => {
         console.log("client.user is null!");
         return;
     }
-    client.user.setActivity({ name: `Version ${botVersion}` });
+    client.user.setActivity({ name: `Version ${environments.botVersion}` });
     console.log(`${client.user.username} is ready!`);
 });
+
+client.on("message", onMessage);
 
 async function onMessage(message: Message): Promise<void> {
     if (message.author.bot || message.guildId == null || client.user == null || !(message.channel.type === "GUILD_TEXT" || message.channel.type === "GUILD_NEWS") || message.channelId !== process.env.DISCORD_CHANNEL_ID) {
@@ -97,7 +42,6 @@ async function onMessage(message: Message): Promise<void> {
         await parseCommand(message);
     }
 }
-client.on("message", onMessage);
 
 process.on("beforeExit", () => {
     if (client.isReady())
@@ -114,6 +58,6 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
     };
 }
 
-console.log(`${process.env.npm_package_name ?? ""}\nVersion ${botVersion}`);
+console.log(`${process.env.npm_package_name ?? ""}\nVersion ${environments.botVersion}`);
 
-client.login(discordBotToken);
+client.login(environments.discordBotToken);
