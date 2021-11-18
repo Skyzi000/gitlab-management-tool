@@ -10,6 +10,7 @@ import { Postgres } from "./postgres";
 
 let gitlabToken: string;
 let discordBotToken: string;
+let botVersion: string | undefined;
 
 if (process.env.NODE_ENV === "production") {
     const gitlabTokenFile = process.env.GITLAB_TOKEN_FILE;
@@ -44,6 +45,14 @@ if (process.env.NODE_ENV === "production") {
     else {
         discordBotToken = readFileSync(discordTokenFile, "utf-8").trim();
     }
+    try {
+        botVersion = process.env.npm_package_version
+            ?? existsSync("./package.json") ? require("./package.json").version
+            : existsSync("../package.json") ? require("../package.json").version
+                : "不明";
+    } catch (err) {
+        console.error(err);
+    }
 }
 else {
     // .envファイルから環境変数の読み込み
@@ -58,6 +67,7 @@ else {
     }
     gitlabToken = process.env.GITLAB_TOKEN;
     discordBotToken = process.env.DISCORD_BOT_TOKEN;
+    botVersion = process.env.npm_package_version ?? "不明";
 }
 
 const gitlab = new Gitlab({ token: gitlabToken });
@@ -80,7 +90,7 @@ client.once("ready", async () => {
         console.log("client.user is null!");
         return;
     }
-    client.user.setActivity({ name: `Version ${process.env.npm_package_version}` });
+    client.user.setActivity({ name: `Version ${botVersion}` });
     console.log(`${client.user.username} is ready!`);
 });
 
@@ -156,17 +166,16 @@ async function parseCommand(message: Message<boolean>): Promise<void> {
         writeErr: (str) => message.reply(`:warning: ${str}`)
     });
     bot
-        .command("about")
-        .description("Botの情報を返します。\n")
+        .command("version")
+        .aliases(["v", "V", "ver", "about"])
+        .description("バージョン情報を返します。\n")
         .action(() => {
-            const pj = require("../package.json");
-            message.reply(`${message.client.user?.username}について\nパッケージ情報\n\`\`\`
-${process.env.npm_package_name}\n${pj.description}\nVersion ${process.env.npm_package_version}
-Dependencies:\n${pj.dependencies}\n\`\`\``);
+            message.reply(`${message.client.user?.username}について\n\`\`\`\nVersion ${botVersion}\n\`\`\``);
         });
 
     bot
         .command("ls")
+        .aliases(["list", "csv", "csvlist"])
         .description("各種データをCSV形式のファイルにまとめて返します。\n")
         .addArgument(new Argument("<type>", "種類").choices(["member", "team", "issue", "milestone"]))
         .addArgument(new Argument("[project]", "対象のプロジェクト").choices(["test", "dest", "source"]).default("test"))
@@ -174,6 +183,7 @@ Dependencies:\n${pj.dependencies}\n\`\`\``);
 
     bot
         .command("mkissue")
+        .aliases(["mkissues", "makeissue", "pubissue", "pubissues", "publishissue", "publishissues"])
         .description(`        ソースプロジェクトのIssueをもとにIssueを新規発行します。
         プロジェクトマイルストーンはコピーされます。
         所属チームを表す\`2\`以外のタグ(\`0\`, \`1\`, \`3\`)はそのままコピーされ、\`1\`のタグによって個人に対して発行するかどうか判断します。
@@ -288,7 +298,6 @@ function execMkissue(message: Message<boolean>): (...args: any[]) => Promise<voi
     };
 }
 
-console.log(`${process.env.npm_package_name}\nVersion ${process.env.npm_package_version}`);
-console.log(require("../package.json").description);
+console.log(`${process.env.npm_package_name ?? ""}\nVersion ${botVersion}`);
 
 client.login(discordBotToken);
