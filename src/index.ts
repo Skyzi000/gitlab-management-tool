@@ -2,10 +2,8 @@ import { IssueSchema, MilestoneSchema, UserSchema } from "@gitbeaker/core/dist/t
 import { Gitlab } from "@gitbeaker/node";
 import { Argument, Command } from "commander";
 import { Client, Intents, Message, TextBasedChannels } from "discord.js";
-import { existsSync, readFileSync, writeFileSync } from "fs";
-import { mkdtemp, rm } from "fs/promises";
-import { tmpdir } from "os";
-import { sep } from "path";
+import { existsSync, readFileSync } from "fs";
+import { execLs } from "./execLs";
 import { Postgres } from "./postgres";
 
 let gitlabToken: string;
@@ -72,9 +70,9 @@ else {
 
 const gitlab = new Gitlab({ token: gitlabToken });
 
-const destProjectId = process.env.GITLAB_DEST_PROJECT_ID;
-const srcProjectId = process.env.GITLAB_SOURCE_PROJECT_ID;
-const testProjectId = process.env.GITLAB_TEST_PROJECT_ID;
+export const destProjectId = process.env.GITLAB_DEST_PROJECT_ID;
+export const srcProjectId = process.env.GITLAB_SOURCE_PROJECT_ID;
+export const testProjectId = process.env.GITLAB_TEST_PROJECT_ID;
 
 const client: Client = new Client({
     intents: [
@@ -110,7 +108,7 @@ process.on("beforeExit", () => {
 })
 
 
-async function localMemberListCsv() {
+export async function localMemberListCsv() {
     const pg = new Postgres();
     const sql = `select gm.student_id, gm.name, gm.gitlab_id, gm.gitlab_email, t.team_id, t.team_color
 from gitlab_member gm
@@ -125,7 +123,7 @@ on gm.team_id = t.team_id ;`;
     return csv;
 }
 
-async function gitlabMemberListCsv(projectId: string | number) {
+export async function gitlabMemberListCsv(projectId: string | number) {
     let csv: string = "";
     const teamColors = await gitlabMemberTeamColors();
     await gitlab.ProjectMembers.all(projectId, { includeInherited: true }).then((members) => {
@@ -137,7 +135,7 @@ async function gitlabMemberListCsv(projectId: string | number) {
     return csv;
 }
 
-async function teamList() {
+export async function teamList() {
     const pg = new Postgres();
     const sql = `select * from team;`;
     const r = await pg.query(sql);
@@ -158,7 +156,7 @@ where gitlab_id is not null ;`;
     return teamColors;
 }
 
-async function gitlabIssuesCsv(projectId: string | number) {
+export async function gitlabIssuesCsv(projectId: string | number) {
     const issues = await gitlab.Issues.all({ projectId, state: "opened" });
     let csv = "id,iid,title,state,created_at,labels,milestone_id,milestone_title,assignee_id\n";
     issues.forEach(i => {
@@ -222,87 +220,6 @@ async function parseCommand(message: Message<boolean>): Promise<void> {
 
     // コマンド内容をコンソールに出力
     console.log(`Commands: ${cmds.join(", ")}`);
-}
-
-function execLs(message: Message<boolean>): (...args: any[]) => Promise<void> {
-    return async (type, project, options, command) => {
-        const projectId = project == "test" ? testProjectId :
-            project == "dest" ? destProjectId :
-                project == "source" ? srcProjectId : undefined;
-
-        switch (type) {
-            case "member":
-                if (projectId == undefined && !options.local) {
-                    await message.reply("プロジェクトIDが設定されていません！");
-                    return;
-                }
-                try {
-                    const csv = await (options.local || !projectId ? localMemberListCsv() : gitlabMemberListCsv(projectId));
-                    const dir = await mkdtemp(`${tmpdir()}${sep}`);
-                    const file = `${dir}${sep}${type}list_${options.local ? "local" : project}.csv`;
-                    writeFileSync(file, csv);
-                    await message.reply({ files: [file] });
-                    rm(dir, { recursive: true, force: true });
-                } catch (err) {
-                    await message.reply(`:warning: ${err}`);
-                }
-                break;
-
-            case "team":
-                try {
-                    const rows = await teamList();
-                    const dir = await mkdtemp(`${tmpdir()}${sep}`);
-                    const file = `${dir}${sep}${type}list.csv`;
-                    let s = "";
-                    rows.forEach(row => {
-                        s += `${row.team_id},${row.team_color}\n`;
-                    });
-                    writeFileSync(file, s);
-                    await message.reply({ files: [file] });
-                    rm(dir, { recursive: true, force: true });
-                } catch (err) {
-                    await message.reply(`:warning: ${err}`);
-                }
-                break;
-
-            case "issue":
-                if (projectId == undefined) {
-                    await message.reply("プロジェクトIDが設定されていません！");
-                    return;
-                }
-                try {
-                    const csv = await gitlabIssuesCsv(projectId);
-                    const dir = await mkdtemp(`${tmpdir()}${sep}`);
-                    const file = `${dir}${sep}${type}list_${project}.csv`;
-                    writeFileSync(file, csv);
-                    await message.reply({ files: [file] });
-                    rm(dir, { recursive: true, force: true });
-                } catch (err) {
-                    await message.reply(`:warning: ${err}`);
-                }
-                break;
-
-            case "milestone":
-                if (projectId == undefined) {
-                    await message.reply("プロジェクトIDが設定されていません！");
-                    return;
-                }
-                try {
-                    throw new Error("未実装です");
-                    // const csv = await gitlabIssuesCsv(projectId);
-                    // const dir = await mkdtemp(`${tmpdir()}${sep}`);
-                    // const file = `${dir}${sep}${type}list_${project}.csv`;
-                    // writeFileSync(file, csv);
-                    // await message.reply({ files: [file] });
-                    // rm(dir, { recursive: true, force: true });
-                } catch (err) {
-                    await message.reply(`:warning: ${err}`);
-                }
-
-            default:
-                break;
-        }
-    };
 }
 
 function execMkissue(message: Message<boolean>): (...args: any[]) => Promise<void> {
