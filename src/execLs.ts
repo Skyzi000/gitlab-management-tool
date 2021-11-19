@@ -1,6 +1,5 @@
 import { Message } from "discord.js";
-import { writeFileSync } from "fs";
-import { mkdtemp, rm } from "fs/promises";
+import { mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { sep } from "path";
 import { testProjectId, destProjectId, srcProjectId } from "./index";
@@ -76,9 +75,12 @@ export function execLs(message: Message<boolean>): (...args: any[]) => Promise<v
 
     async function replyCsv(csv: string, type?: string, project?: string) {
         const dir = await mkdtemp(`${tmpdir()}${sep}`);
-        const file = `${dir}${sep}${type ?? ""}list${project ? `_${project}` : ""}.csv`;
-        writeFileSync(file, csv);
-        await message.reply({ files: [file] });
-        rm(dir, { recursive: true, force: true });
+        try {
+            const file = `${dir}${sep}${type ?? ""}list${project ? `_${project}` : ""}.csv`;
+            await writeFile(file, csv);
+            await message.reply({ files: [file] });
+        } finally {
+            await rm(dir, { recursive: true, force: true });
+        }
     }
 }
