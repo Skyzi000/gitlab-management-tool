@@ -8,19 +8,20 @@ import { localMemberListCsv, teamList } from "./postgres";
 
 export function execLs(message: Message<boolean>): (...args: any[]) => Promise<void> {
     return async (type, project, options, command) => {
-        const projectId = project == "test" ? testProjectId :
-            project == "dest" ? destProjectId :
-                project == "source" ? srcProjectId : undefined;
+        const projectId = project === "test" ? testProjectId :
+            project === "dest" ? destProjectId :
+                project === "source" ? srcProjectId :
+                    project === "local" ? "local" : undefined;
 
         switch (type) {
             case "member":
-                if (projectId == undefined && !options.local) {
+                if (projectId === undefined) {
                     await message.reply("プロジェクトIDが設定されていません！");
                     return;
                 }
                 try {
-                    const csv = await (options.local || !projectId ? localMemberListCsv() : gitlabMemberListCsv(projectId));
-                    await replyCsv(csv, type, options.local ? "local" : project);
+                    const csv = await (project === "local" ? localMemberListCsv() : gitlabMemberListCsv(projectId));
+                    await replyCsv(csv, type, project);
                 } catch (err) {
                     await message.reply(`:warning: ${err}`);
                 }
@@ -40,12 +41,12 @@ export function execLs(message: Message<boolean>): (...args: any[]) => Promise<v
                 break;
 
             case "issue":
-                if (projectId == undefined) {
+                if (projectId === undefined) {
                     await message.reply("プロジェクトIDが設定されていません！");
                     return;
                 }
                 try {
-                    if (options.local)
+                    if (project === "local")
                         throw new Error(`ローカルデータベースの${type}リストは未実装です。`);
                     const csv = await gitlabIssuesCsv(projectId);
                     await replyCsv(csv, type, project);
@@ -60,7 +61,7 @@ export function execLs(message: Message<boolean>): (...args: any[]) => Promise<v
                     return;
                 }
                 try {
-                    if (options.local)
+                    if (project === "local")
                         throw new Error(`ローカルデータベースの${type}リストは未実装です。`);
                     const csv = await gitlabMilestonesCsv(projectId);
                     await replyCsv(csv, type, project);

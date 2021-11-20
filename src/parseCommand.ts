@@ -29,8 +29,7 @@ export async function parseCommand(message: Message<boolean>): Promise<void> {
         .aliases(["list", "csv", "csvlist"])
         .description("各種データをCSV形式のファイルにまとめて返します。\n")
         .addArgument(new Argument("<type>", "種類").choices(["member", "team", "issue", "milestone"]))
-        .addArgument(new Argument("[project]", "対象のプロジェクト").choices(["test", "dest", "source"]).default("test"))
-        .option("-l, --local", "GitLabに問い合わせたりせず、ローカルのデータベース上の情報のみを返します。")
+        .addArgument(new Argument("[project]", "対象のプロジェクト、またはローカルのデータベース").choices(["test", "dest", "source", "local"]).default("local"))
         .action(execLs(message));
 
     bot
