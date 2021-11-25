@@ -76,10 +76,12 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
                 await milestoneMutex.runExclusive(async () => {
                     destMilestoneId = await getDestMilestoneId(srcIssue);
                     if (srcIssue.milestone?.id && !destMilestoneId) {
-                        executionDetailText += `マイルストーン "${srcIssue.milestone.title}" を新規作成します\n`;
+                        executionDetailText += `Milestone: "${srcIssue.milestone.title}" (新規作成)\n`;
                         if (execute) {
                             destMilestoneId = await createMilestone(srcIssue);
                         }
+                    } else {
+                        executionDetailText += `Milestone: "${srcIssue.milestone.title}" (${destMilestoneId})\n`;
                     }
                 });
                 if (!labels.find(l => l.match("3_全役職"))) {
@@ -157,7 +159,7 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
                 return milestoneId;
             // データベースになければTitleをもとに検索する
             const destMilestones = await gitlab.ProjectMilestones.all(destProjectId);
-            milestoneId = destMilestones.find(milestone => { milestone.title === srcIssue.milestone.title })?.id;
+            milestoneId = destMilestones.find(milestone => milestone.title === srcIssue.milestone.title)?.id;
             if (!milestoneId)
                 return;
             // 見つかったらデータベースにidを書き込んでから返す

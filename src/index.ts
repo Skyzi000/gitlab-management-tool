@@ -55,24 +55,3 @@ process.on("beforeExit", () => {
 console.log(`${process.env.npm_package_name ?? ""}\nVersion ${environments.botVersion}`);
 
 client.login(environments.discordBotToken);
-
-// try {
-//     if (testProjectId)
-//         gitlab.Issues.create(testProjectId, { title: "test3", assignee_ids: [10042847], description: "プログラムからIssueを作ってAssignしてみるテスト２" }).then(i => {
-//             console.log(i);
-//         });
-// } catch (err) {
-//     console.error(err);
-// }
-
-// try {
-//     if (testProjectId && destProjectId) {
-//         gitlab.Labels.all(destProjectId).then(labels => {
-//             labels.forEach(label => {
-//                 gitlab.Labels.create(testProjectId, label.name, label.color, {description: label.description, priority: label.priority})
-//             })
-//         });
-//     }
-// } catch (error) {
-//     console.error(error);
-// }
