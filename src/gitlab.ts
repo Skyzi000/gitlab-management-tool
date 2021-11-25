@@ -32,7 +32,7 @@ export async function gitlabMemberListCsv(projectId: string | number) {
     return csv;
 }
 
-async function gitlabMemberTeamColors() {
+export async function gitlabMemberTeamColors() {
     const pg = new Postgres();
     const sql = `select gitlab_id, t.team_color from gitlab_member gm
 left outer join team t
