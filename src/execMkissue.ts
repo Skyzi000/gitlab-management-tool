@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { sep } from "path";
 import { gitlabMemberTeamColors } from "./gitlab";
-import { testProjectId, destProjectId, srcProjectId, gitlab } from "./index";
+import { testProjectId, destProjectId, srcProjectId, gitlab, botVersion } from "./index";
 
 
 export function execMkissue(message: Message<boolean>): (...args: any[]) => Promise<void> {
@@ -13,14 +13,14 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
             const projectId = project === "test" ? testProjectId :
                 project === "dest" ? destProjectId : undefined;
             if (projectId === undefined) {
-                await message.reply("宛先となるプロジェクトIDが設定されていません！");
+                await message.reply("発行先プロジェクトIDが設定されていません！");
                 return;
             }
             if (srcProjectId === undefined) {
-                await message.reply("ソースプロジェクトIDが設定されていません！");
+                await message.reply("発行元プロジェクトIDが設定されていません！");
                 return;
             }
-            const executionDetailText = await makeIssues(projectId, options.yes, options.close);
+            const executionDetailText = await makeIssues(srcProjectId, projectId, options.yes, options.close, project);
             const executionDetails = await replyFile(executionDetailText, "txt", `${project}_${options.yes ? "execlog" : "preview"}`);
             if (!options.yes) {
                 const confirm = await message.channel.send(`<@${message.author.id}> この内容で実行して良ければ :o: を、キャンセルするなら :x: をリアクションしてください`);
@@ -31,7 +31,7 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
                 try {
                     const reaction = await confirm.awaitReactions({ filter: filter, max: 1, time: 60000, errors: ["time"] });
                     if (reaction.first()?.emoji.name === oReact.emoji.name) {
-                        const executionDetailText = await makeIssues(projectId, true, options.close);
+                        const executionDetailText = await makeIssues(srcProjectId, projectId, true, options.close, project);
                         const executionDetails = await replyFile(executionDetailText, "txt", project);
                     }
                     else if (reaction.first()?.emoji.name === xReact.emoji.name) {
@@ -48,9 +48,9 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
             await message.reply(`:warning: ${err}`);
         }
     };
-    async function makeIssues(projectId: string, execute: boolean, close: boolean) {
-        const srcIssues = (await gitlab.Issues.all({ srcProjectId, state: "opened" })) as IssueSchema[];
-        let executionDetailText = "";
+    async function makeIssues(sourceProjectId: string, destProjectId: string, execute: boolean, close: boolean, project?: string) {
+        const srcIssues = (await gitlab.Issues.all({ srcProjectId: sourceProjectId, state: "opened" })) as IssueSchema[];
+        let executionDetailText = `mkissue 実行内容${execute ? "" : "プレビュー"} (v${botVersion})\n\n発行元プロジェクトID: ${sourceProjectId}\n発行先プロジェクト: ${project} (id: ${destProjectId})\n`;
 
         srcIssues.forEach(async (issue) => {
             executionDetailText += `\n------\nSrc: ${issue.title} (#${issue.iid})\n`;
@@ -60,14 +60,14 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
                     return;
                 }
                 const teamColors = await gitlabMemberTeamColors();
-                const members = await gitlab.ProjectMembers.all(projectId, { includeInherited: true });
+                const members = await gitlab.ProjectMembers.all(destProjectId, { includeInherited: true });
                 const labels = issue.labels?.filter(name => !name.startsWith("2"));
                 executionDetailText += `Labels: ${labels.join(", ")}\nTargetMembers: ${members.map(m => m.name).join(", ")}\n`;
                 members.forEach(async (member) => {
                     const la = labels.concat([`2_${teamColors[member.id]}チーム`]);
 
                     if (execute) {
-                        gitlab.Issues.create(projectId, {
+                        gitlab.Issues.create(destProjectId, {
                             title: issue.title,
                             description: issue.description,
                             assignee_ids: [member.id],
