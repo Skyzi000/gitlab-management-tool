@@ -1,10 +1,12 @@
 import { IssueSchema } from "@gitbeaker/core/dist/types/types";
 import { Message, MessageReaction, User } from "discord.js";
 import { mkdtemp, rm, writeFile } from "fs/promises";
+import Keyv from "keyv";
 import { tmpdir } from "os";
 import { sep } from "path";
 import { gitlabMemberTeamColors } from "./gitlab";
-import { testProjectId, destProjectId, srcProjectId, gitlab, botVersion } from "./index";
+import { botVersion, destProjectId, gitlab, srcProjectId, testProjectId } from "./index";
+import { getKeyvPgConStr } from "./keyv";
 
 
 export function execMkissue(message: Message<boolean>): (...args: any[]) => Promise<void> {
@@ -51,12 +53,16 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
 
     async function makeIssues(sourceProjectId: string, destProjectId: string, execute: boolean, close: boolean, project?: string) {
         const srcIssues = (await gitlab.Issues.all({ projectId: sourceProjectId, state: "opened" })) as IssueSchema[];
+        /** 生成元のマイルストーンのグローバルidをキー、生成先のマイルストーンのとする */
+        const milestoneDb = new Keyv(getKeyvPgConStr(), { table: `milestone_${sourceProjectId}`, namespace: destProjectId });
+        /** 生成したIssueのiidをキー、生成元のIssueのiidをバリューとする */
+        const issueDb = new Keyv(getKeyvPgConStr(), { table: `issue_${sourceProjectId}`, namespace: destProjectId });
         const executionDetailHeader = `mkissue 実行内容${execute ? "" : "プレビュー"} (v${botVersion})\n\n発行元プロジェクトID: ${sourceProjectId}\n発行先プロジェクト: ${project} (id: ${destProjectId})\n`;
-        const results = await Promise.all(srcIssues.map(async srcIssue => makeIssue(srcIssue, destProjectId, execute, close, project)));
+        const results = await Promise.all(srcIssues.map(async srcIssue => makeIssue(srcIssue, destProjectId, execute, close, milestoneDb, issueDb)));
         return `${executionDetailHeader}\n------\n${results.join("\n------\n")}`;
     }
 
-    async function makeIssue(srcIssue: IssueSchema, destProjectId: string, execute: boolean, close: boolean, project?: string): Promise<string> {
+    async function makeIssue(srcIssue: IssueSchema, destProjectId: string, execute: boolean, close: boolean, milestoneDb: Keyv, issueDb: Keyv): Promise<string> {
         let executionDetailText = `Src: ${srcIssue.title} (#${srcIssue.iid})\n`;
         try {
             // チームごとのラベルは一旦外しておく
@@ -72,21 +78,26 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
                 }
                 const teamColors = await gitlabMemberTeamColors();
                 const destMembers = await gitlab.ProjectMembers.all(destProjectId, { includeInherited: true });
-
                 executionDetailText += `Labels: ${labels.join(", ")}\nTargetMembers: ${destMembers.map(m => m.name).join(", ")}\n`;
-
                 if (execute) {
-                    await Promise.all(destMembers.map(async member => {
-                        const la = member.id in teamColors ? labels.concat([`2_${teamColors[member.id]}チーム`]) : labels;
-                        gitlab.Issues.create(destProjectId, {
-                            title: srcIssue.title,
-                            description: srcIssue.description,
-                            assignee_ids: [member.id],
-                            confidential: srcIssue.confidential,
-                            due_date: srcIssue.due_date,
-                            labels: la
-                        });
+                    const results = await Promise.all(destMembers.map(async member => {
+                        try {
+                            const la = member.id in teamColors ? labels.concat([`2_${teamColors[member.id]}チーム`]) : labels;
+                            const created = await gitlab.Issues.create(destProjectId, {
+                                title: srcIssue.title,
+                                description: srcIssue.description,
+                                assignee_ids: [member.id],
+                                confidential: srcIssue.confidential,
+                                due_date: srcIssue.due_date,
+                                labels: la
+                            });
+                            issueDb.set(created.iid.toString(), srcIssue.iid);
+                            return created;
+                        } catch (error) {
+                            executionDetailText += `[Error] ${member.name}に割り当てるIssueの生成中にエラーが発生したのでスキップします\n詳細: ${error}`;
+                        }
                     }));
+                    executionDetailText += `生成したIssueの数: ${results.filter(r => r !== undefined).length}`;
                 }
                 if (close) {
                     executionDetailText += `ソースプロジェクトの ${srcIssue.title} (#${srcIssue.iid}) をClose\n`;
@@ -102,7 +113,7 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
                 return executionDetailText;
             }
         } catch (error) {
-            executionDetailText += `[Error] Issueの生成中にエラーが発生したのでスキップします\n詳細: ${error}`;
+            executionDetailText += `[Error] 予期しないエラーが発生したのでスキップします\n詳細: ${error}`;
             return executionDetailText;
         }
         return executionDetailText;
