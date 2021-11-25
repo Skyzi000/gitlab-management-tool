@@ -68,18 +68,14 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
                 // チームごとのラベルは一旦外しておく
                 const labels = srcIssue.labels?.filter(name => !name.startsWith("2"));
                 if (!labels)
-                    return executionDetailText + "ラベルがないのでスキップします";
+                    return executionDetailText + "ラベルがないのでスキップします\n";
                 // マイルストーンIDの取得
                 let destMilestoneId: number | undefined = await getDestMilestoneId(srcIssue);
                 if (srcIssue.milestone?.id && !destMilestoneId) {
-                    // マイルストーンを新規作成する
-                    const createdMilestone = await gitlab.ProjectMilestones.create(destProjectId, srcIssue.milestone.title, {
-                        description: srcIssue.milestone.description,
-                        due_date: srcIssue.milestone.due_date,
-                        start_date: srcIssue.milestone.start_date
-                    });
-                    destMilestoneId = createdMilestone.id;
-                    await milestoneDb.set(srcIssue.milestone.id.toString(), destMilestoneId);
+                    executionDetailText += `マイルストーン "${srcIssue.milestone.title}" を新規作成します\n`;
+                    if (execute) {
+                        destMilestoneId = await createMilestone(srcIssue);
+                    }
                 }
                 if (!labels.find(l => l.match("3_全役職"))) {
                     if (labels.find(l => l.startsWith("3"))) {
@@ -129,10 +125,22 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
                     return executionDetailText;
                 }
             } catch (error) {
-                executionDetailText += `[Error] 予期しないエラーが発生したのでスキップします\n詳細: ${error}`;
+                executionDetailText += `[Error] 予期しないエラーが発生したのでスキップします\n詳細: ${error}\n${error instanceof Error ? error.stack : ""}`;
+                console.error(error);
                 return executionDetailText;
             }
             return executionDetailText;
+        }
+
+        async function createMilestone(srcIssue: IssueSchema) {
+            const createdMilestone = await gitlab.ProjectMilestones.create(destProjectId, srcIssue.milestone.title, {
+                description: srcIssue.milestone.description,
+                due_date: srcIssue.milestone.due_date,
+                start_date: srcIssue.milestone.start_date
+            });
+            const destMilestoneId = createdMilestone.id;
+            await milestoneDb.set(srcIssue.milestone.id.toString(), destMilestoneId);
+            return destMilestoneId;
         }
 
         async function getDestMilestoneId(srcIssue: IssueSchema) {
