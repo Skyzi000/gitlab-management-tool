@@ -67,6 +67,8 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
             try {
                 // チームごとのラベルは一旦外しておく
                 const labels = srcIssue.labels?.filter(name => !name.startsWith("2"));
+                if (!labels)
+                    return executionDetailText + "ラベルがないのでスキップします";
                 // マイルストーンIDの取得
                 let destMilestoneId: number | undefined = await getDestMilestoneId(srcIssue);
                 if (srcIssue.milestone?.id && !destMilestoneId) {
@@ -79,22 +81,22 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
                     destMilestoneId = createdMilestone.id;
                     await milestoneDb.set(srcIssue.milestone.id.toString(), destMilestoneId);
                 }
-                if (labels?.find(l => l.match("個人"))) {
-                    if (!labels.find(l => l.match("3_全役職"))) {
-                        if (labels.find(l => l.startsWith("3"))) {
-                            executionDetailText += `全役職対象でないミッション作成機能は未実装なのでスキップします\n`;
-                            return executionDetailText;
-                        }
-                        // 役職ラベルが何もついてなければ全役職ラベルを付ける
-                        labels.push("3_全役職");
+                if (!labels.find(l => l.match("3_全役職"))) {
+                    if (labels.find(l => l.startsWith("3"))) {
+                        executionDetailText += `全役職対象でないミッション作成機能は未実装なのでスキップします\n`;
+                        return executionDetailText;
                     }
+                    // 役職ラベルが何もついてなければ全役職ラベルを付ける
+                    labels.push("3_全役職");
+                }
+                if (labels.find(l => l.match("個人"))) {
                     const teamColors = await gitlabMemberTeamColors();
-                    const destMembers = await gitlab.ProjectMembers.all(destProjectId, { includeInherited: true });
+                    const destMembers = (await gitlab.ProjectMembers.all(destProjectId, { includeInherited: true })).filter(member => member.id in teamColors);
                     executionDetailText += `Labels: ${labels.join(", ")}\nTargetMembers: ${destMembers.map(m => m.name).join(", ")}\n`;
                     if (execute) {
                         const results = await Promise.all(destMembers.map(async member => {
                             try {
-                                const la = member.id in teamColors ? labels.concat([`2_${teamColors[member.id]}チーム`]) : labels;
+                                const la = labels.concat([`2_${teamColors[member.id]}チーム`]);
                                 const created = await gitlab.Issues.create(destProjectId, {
                                     title: srcIssue.title,
                                     description: srcIssue.description,
@@ -119,6 +121,7 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
                         }
                     }
                 } else if (srcIssue.labels?.find(l => l.match("グループ"))) {
+
                     executionDetailText += `グループミッション作成機能は未実装なのでスキップします\n`;
                     return executionDetailText;
                 } else {
