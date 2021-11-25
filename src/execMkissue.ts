@@ -118,7 +118,7 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
                     if (close) {
                         executionDetailText += `ソースプロジェクトの ${srcIssue.title} (#${srcIssue.iid}) をClose\n`;
                         if (execute) {
-                            gitlab.Issues.closedBy(srcIssue.project_id, srcIssue.iid);
+                            await gitlab.Issues.closedBy(srcIssue.project_id, srcIssue.iid);
                         }
                     }
                 } else if (srcIssue.labels?.find(l => l.match("グループ"))) {
@@ -130,7 +130,7 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
                     return executionDetailText;
                 }
             } catch (error) {
-                executionDetailText += `[Error] 予期しないエラーが発生したのでスキップします\n詳細: ${error}\n${error instanceof Error ? error.stack : ""}`;
+                executionDetailText += `[Error] 予期しないエラーが発生したのでスキップします\n詳細: ${error}\n${error instanceof Error ? error.stack : ""}\n`;
                 console.error(error);
                 return executionDetailText;
             }
@@ -150,16 +150,16 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
 
         async function getDestMilestoneId(srcIssue: IssueSchema) {
             if (!srcIssue.milestone)
-                return undefined;
+                return;
             // まずデータベースから取得を試みる
             let milestoneId = await milestoneDb.get(srcIssue.milestone.id.toString());
-            if (!milestoneId || isNaN(milestoneId))
+            if (milestoneId && !isNaN(milestoneId))
                 return milestoneId;
             // データベースになければTitleをもとに検索する
             const destMilestones = await gitlab.ProjectMilestones.all(destProjectId);
             milestoneId = destMilestones.find(milestone => { milestone.title === srcIssue.milestone.title })?.id;
             if (!milestoneId)
-                return undefined;
+                return;
             // 見つかったらデータベースにidを書き込んでから返す
             await milestoneDb.set(srcIssue.milestone.id.toString(), milestoneId);
             return milestoneId;
