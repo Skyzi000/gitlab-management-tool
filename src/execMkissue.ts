@@ -58,7 +58,7 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
         const milestoneDb = new Keyv<number>(getKeyvPgConStr(), { table: `milestone_${sourceProjectId}`, namespace: destProjectId });
         /** 生成したIssueのiidをキー、生成元のIssueのiidをバリューとする */
         const issueDb = new Keyv<number>(getKeyvPgConStr(), { table: `issue_${sourceProjectId}`, namespace: destProjectId });
-        const executionDetailHeader = `mkissue 実行内容${execute ? "" : "プレビュー"} (v${botVersion})\n\n発行元プロジェクトID: ${sourceProjectId}\n発行先プロジェクト: ${project} (id: ${destProjectId})\n`;
+        const executionDetailHeader = `mkissue 実行内容${execute ? "" : "プレビュー"} (v${botVersion})\n\n発行元プロジェクトID: ${sourceProjectId}\n発行先プロジェクトID: ${destProjectId} (${project})\n`;
         const milestoneMutex = new Mutex();
         const results = await Promise.all(srcIssues.map(async srcIssue => makeIssue(srcIssue)));
         return `${executionDetailHeader}\n------\n${results.map(r=>r.join("\n")).join("\n\n------\n")}`;
