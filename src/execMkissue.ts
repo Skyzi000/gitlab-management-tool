@@ -77,7 +77,7 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
 
                 if (execute) {
                     await Promise.all(destMembers.map(async member => {
-                        const la = labels.concat([`2_${teamColors[member.id]}チーム`]);
+                        const la = member.id in teamColors ? labels.concat([`2_${teamColors[member.id]}チーム`]) : labels;
                         gitlab.Issues.create(destProjectId, {
                             title: srcIssue.title,
                             description: srcIssue.description,
