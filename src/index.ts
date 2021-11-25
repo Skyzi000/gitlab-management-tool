@@ -4,7 +4,6 @@ import { getEnvironments } from "./getEnvironments";
 import { parseCommand } from "./parseCommand";
 
 
-
 const environments = getEnvironments();
 
 export const botVersion = environments.botVersion;
@@ -19,7 +18,8 @@ const client: Client = new Client({
         Intents.FLAGS.GUILDS,
         Intents.FLAGS.GUILD_MESSAGES,
         Intents.FLAGS.DIRECT_MESSAGES,
-        Intents.FLAGS.GUILD_MESSAGE_TYPING
+        Intents.FLAGS.GUILD_MESSAGE_TYPING,
+        Intents.FLAGS.GUILD_MESSAGE_REACTIONS
     ]
 });
 
@@ -35,7 +35,11 @@ client.once("ready", async () => {
 client.on("message", onMessage);
 
 async function onMessage(message: Message): Promise<void> {
-    if (message.author.bot || message.guildId == null || client.user == null || !(message.channel.type === "GUILD_TEXT" || message.channel.type === "GUILD_NEWS") || message.channelId !== process.env.DISCORD_CHANNEL_ID) {
+    if (message.author.bot ||
+        message.guildId == null ||
+        client.user == null ||
+        !(message.channel.type === "GUILD_TEXT" || message.channel.type === "GUILD_NEWS") ||
+        message.channelId !== process.env.DISCORD_CHANNEL_ID) {
         return;
     }
     if (message.mentions.users.has(client.user.id)) {
@@ -47,16 +51,6 @@ process.on("beforeExit", () => {
     if (client.isReady())
         client.destroy();
 });
-
-export function execMkissue(message: Message<boolean>): (...args: any[]) => Promise<void> {
-    return async (project, close) => {
-        try {
-            throw new Error("未実装です");
-        } catch (err) {
-            await message.reply(`:warning: ${err}`);
-        }
-    };
-}
 
 console.log(`${process.env.npm_package_name ?? ""}\nVersion ${environments.botVersion}`);
 

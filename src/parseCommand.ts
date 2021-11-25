@@ -1,7 +1,8 @@
 import { Argument, Command } from "commander";
 import { Message } from "discord.js";
 import { execLs } from "./execLs";
-import { botVersion, execMkissue } from "./index";
+import { execMkissue } from "./execMkissue";
+import { botVersion } from "./index";
 
 export async function parseCommand(message: Message<boolean>): Promise<void> {
     // 入力中...で反応していることを返す
@@ -35,14 +36,17 @@ export async function parseCommand(message: Message<boolean>): Promise<void> {
     bot
         .command("mkissue")
         .aliases(["mkissues", "makeissue", "pubissue", "pubissues", "publishissue", "publishissues"])
-        .description(`        ソースプロジェクトのIssueをもとにIssueを新規発行します。
+        .description(`        ソースプロジェクトのOpen状態のIssueをもとにIssueを新規発行します。
         プロジェクトマイルストーンはコピーされます。
-        所属チームを表す\`2\`以外のタグ(\`0\`, \`1\`, \`3\`)はそのままコピーされ、\`1\`のタグによって個人に対して発行するかどうか判断します。
-        個人に対して発行されたIssueには自動的に該当する人がAssignされ、その人の所属するチームの\`2\`タグが付与されます。
-        また、個人に対して発行するIssueは\`3\`の役職タグに従い、該当する役職の人にのみ発行されます。
-        チームに対して発行するIssueは、各チームに対して一つずつ発行されます。\n`)
-        .addArgument(new Argument("[project]", "対象のプロジェクト").choices(["test", "dest"]).default("test"))
-        .option("-c, --close", "ソースプロジェクトのIssueをCloseするか", true)
+        所属チームを表す\`2\`以外のラベル(\`0\`, \`1\`, \`3\`)はそのままコピーされ、\`1\`のラベルによって個人に対して発行するかどうか判断します。
+        個人に対して発行されたIssueには自動的に該当する人がAssignされ、その人の所属するチームの\`2\`ラベルが付与されます。
+        また、個人に対して発行するIssueは\`3\`の役職ラベルに従い、該当する役職の人にのみ発行されます。
+        チームに対して発行するIssueは、各チームに対して一つずつ発行されます。
+        影響の大きいコマンドなので、デフォルトではまず操作内容を書き出し、実行するか否かを尋ねます。
+        \`- y\` または \`--yes\` オプション付きでコマンドを実行すると、即実行します。\n`)
+        .addArgument(new Argument("[project]", "対象のプロジェクト").choices(["test", "dest"]).default("dest"))
+        .option("--no-close", "ソースプロジェクトのIssueをCloseしないようにします")
+        .option("-y, --yes", "確認せずに即実行します")
         .action(execMkissue(message));
 
 
