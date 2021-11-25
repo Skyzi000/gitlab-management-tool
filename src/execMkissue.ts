@@ -23,7 +23,7 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
             const executionDetailText = await makeIssues(srcProjectId, projectId, options.yes, options.close, project);
             const executionDetails = await replyFile(executionDetailText, "txt", `${project}_${options.yes ? "execlog" : "preview"}`);
             if (!options.yes) {
-                const confirm = await message.channel.send(`<@${message.author.id}> この内容で実行して良ければ :o: を、キャンセルするなら :x: をリアクションしてください`);
+                const confirm = await message.channel.send(`<@${message.author.id}> この内容で実行して良ければ :o: で、キャンセルするなら :x: でリアクションしてください`);
                 const oReact = await confirm.react("⭕");
                 const xReact = await confirm.react("❌");
                 const filter = (reaction: MessageReaction, user: User) => (reaction.emoji.name === oReact.emoji.name || reaction.emoji.name === xReact.emoji.name) &&
@@ -48,19 +48,24 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
             await message.reply(`:warning: ${err}`);
         }
     };
+
     async function makeIssues(sourceProjectId: string, destProjectId: string, execute: boolean, close: boolean, project?: string) {
         const srcIssues = (await gitlab.Issues.all({ projectId: sourceProjectId, state: "opened" })) as IssueSchema[];
-        let executionDetailText = `mkissue 実行内容${execute ? "" : "プレビュー"} (v${botVersion})\n\n発行元プロジェクトID: ${sourceProjectId}\n発行先プロジェクト: ${project} (id: ${destProjectId})\n`;
+        const executionDetailHeader = `mkissue 実行内容${execute ? "" : "プレビュー"} (v${botVersion})\n\n発行元プロジェクトID: ${sourceProjectId}\n発行先プロジェクト: ${project} (id: ${destProjectId})\n`;
+        const results = await Promise.all(srcIssues.map(async srcIssue => makeIssue(srcIssue, destProjectId, execute, close, project)));
+        return `${executionDetailHeader}\n------\n${results.join("\n------\n")}`;
+    }
 
-        srcIssues.forEach(async (srcIssue) => {
-            executionDetailText += `\n------\nSrc: ${srcIssue.title} (#${srcIssue.iid})\n`;
+    async function makeIssue(srcIssue: IssueSchema, destProjectId: string, execute: boolean, close: boolean, project?: string): Promise<string> {
+        let executionDetailText = `Src: ${srcIssue.title} (#${srcIssue.iid})\n`;
+        try {
             // チームごとのラベルは一旦外しておく
             const labels = srcIssue.labels?.filter(name => !name.startsWith("2"));
             if (labels?.find(l => l.match("個人"))) {
                 if (!labels.find(l => l.match("3_全役職"))) {
                     if (labels.find(l => l.startsWith("3"))) {
                         executionDetailText += `全役職対象でないミッション作成機能は未実装なのでスキップします\n`;
-                        return;
+                        return executionDetailText;
                     }
                     // 役職ラベルが何もついてなければ全役職ラベルを付ける
                     labels.push("3_全役職");
@@ -69,10 +74,10 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
                 const destMembers = await gitlab.ProjectMembers.all(destProjectId, { includeInherited: true });
 
                 executionDetailText += `Labels: ${labels.join(", ")}\nTargetMembers: ${destMembers.map(m => m.name).join(", ")}\n`;
-                destMembers.forEach(async (member) => {
-                    const la = labels.concat([`2_${teamColors[member.id]}チーム`]);
 
-                    if (execute) {
+                if (execute) {
+                    await Promise.all(destMembers.map(async member => {
+                        const la = labels.concat([`2_${teamColors[member.id]}チーム`]);
                         gitlab.Issues.create(destProjectId, {
                             title: srcIssue.title,
                             description: srcIssue.description,
@@ -81,22 +86,25 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
                             due_date: srcIssue.due_date,
                             labels: la
                         });
+                    }));
+                }
+                if (close) {
+                    executionDetailText += `ソースプロジェクトの ${srcIssue.title} (#${srcIssue.iid}) をClose\n`;
+                    if (execute) {
+                        gitlab.Issues.closedBy(srcIssue.project_id, srcIssue.iid);
                     }
-                    if (close) {
-                        executionDetailText += `ソースプロジェクトの ${srcIssue.title} (#${srcIssue.iid}) をClose\n`;
-                        if (execute) {
-                            gitlab.Issues.closedBy(srcIssue.project_id, srcIssue.iid);
-                        }
-                    }
-                });
+                }
             } else if (srcIssue.labels?.find(l => l.match("グループ"))) {
                 executionDetailText += `グループミッション作成機能は未実装なのでスキップします\n`;
-                return;
+                return executionDetailText;
             } else {
                 executionDetailText += `[Warn] 個人ラベルもグループラベルも付いていないのでスキップします\n`;
-                return;
+                return executionDetailText;
             }
-        });
+        } catch (error) {
+            executionDetailText += `[Error] Issueの生成中にエラーが発生したのでスキップします\n詳細: ${error}`;
+            return executionDetailText;
+        }
         return executionDetailText;
     }
 
