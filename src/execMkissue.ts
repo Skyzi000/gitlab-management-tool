@@ -1,4 +1,5 @@
 import { IssueSchema } from "@gitbeaker/core/dist/types/types";
+import { Mutex } from "async-mutex";
 import { Message, MessageReaction, User } from "discord.js";
 import { mkdtemp, rm, writeFile } from "fs/promises";
 import Keyv from "keyv";
@@ -58,6 +59,7 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
         /** 生成したIssueのiidをキー、生成元のIssueのiidをバリューとする */
         const issueDb = new Keyv<number>(getKeyvPgConStr(), { table: `issue_${sourceProjectId}`, namespace: destProjectId });
         const executionDetailHeader = `mkissue 実行内容${execute ? "" : "プレビュー"} (v${botVersion})\n\n発行元プロジェクトID: ${sourceProjectId}\n発行先プロジェクト: ${project} (id: ${destProjectId})\n`;
+        const milestoneMutex = new Mutex();
         const results = await Promise.all(srcIssues.map(async srcIssue => makeIssue(srcIssue)));
         return `${executionDetailHeader}\n------\n${results.join("\n------\n")}`;
 
@@ -70,13 +72,16 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
                 if (!labels)
                     return executionDetailText + "ラベルがないのでスキップします\n";
                 // マイルストーンIDの取得
-                let destMilestoneId: number | undefined = await getDestMilestoneId(srcIssue);
-                if (srcIssue.milestone?.id && !destMilestoneId) {
-                    executionDetailText += `マイルストーン "${srcIssue.milestone.title}" を新規作成します\n`;
-                    if (execute) {
-                        destMilestoneId = await createMilestone(srcIssue);
+                let destMilestoneId: number | undefined;
+                await milestoneMutex.runExclusive(async () => {
+                    destMilestoneId = await getDestMilestoneId(srcIssue);
+                    if (srcIssue.milestone?.id && !destMilestoneId) {
+                        executionDetailText += `マイルストーン "${srcIssue.milestone.title}" を新規作成します\n`;
+                        if (execute) {
+                            destMilestoneId = await createMilestone(srcIssue);
+                        }
                     }
-                }
+                });
                 if (!labels.find(l => l.match("3_全役職"))) {
                     if (labels.find(l => l.startsWith("3"))) {
                         executionDetailText += `全役職対象でないミッション作成機能は未実装なのでスキップします\n`;
@@ -87,7 +92,7 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
                 }
                 if (labels.find(l => l.match("個人"))) {
                     const teamColors = await gitlabMemberTeamColors();
-                    const destMembers = (await gitlab.ProjectMembers.all(destProjectId, { includeInherited: true })).filter(member => member.id in teamColors);
+                    const destMembers = (await gitlab.ProjectMembers.all(destProjectId, { includeInherited: true })).filter(member => member.id in teamColors && teamColors[member.id]);
                     executionDetailText += `Labels: ${labels.join(", ")}\nTargetMembers: ${destMembers.map(m => m.name).join(", ")}\n`;
                     if (execute) {
                         const results = await Promise.all(destMembers.map(async member => {
