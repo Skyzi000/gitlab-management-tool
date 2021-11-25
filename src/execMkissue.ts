@@ -120,7 +120,7 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
                     if (close) {
                         executionDetailText += `ソースプロジェクトの ${srcIssue.title} (#${srcIssue.iid}) をClose\n`;
                         if (execute) {
-                            await gitlab.Issues.closedBy(srcIssue.project_id, srcIssue.iid);
+                            await gitlab.Issues.edit(srcIssue.project_id, srcIssue.iid, { state_event: "close" });
                         }
                     }
                 } else if (srcIssue.labels?.find(l => l.match("グループ"))) {
