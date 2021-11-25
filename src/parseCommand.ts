@@ -1,7 +1,8 @@
 import { Argument, Command } from "commander";
 import { Message } from "discord.js";
 import { execLs } from "./execLs";
-import { botVersion, execMkissue } from "./index";
+import { execMkissue } from "./execMkissue";
+import { botVersion } from "./index";
 
 export async function parseCommand(message: Message<boolean>): Promise<void> {
     // 入力中...で反応していることを返す
