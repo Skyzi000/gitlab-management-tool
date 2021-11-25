@@ -115,7 +115,7 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
                                 executionDetailText += `[Error] ${member.name}に割り当てるIssueの生成中にエラーが発生したのでスキップします\n詳細: ${error}`;
                             }
                         }));
-                        executionDetailText += `生成したIssueの数: ${results.filter(r => r !== undefined).length}`;
+                        executionDetailText += `生成したIssueの数: ${results.filter(r => r !== undefined).length}\n`;
                     }
                     if (close) {
                         executionDetailText += `ソースプロジェクトの ${srcIssue.title} (#${srcIssue.iid}) をClose\n`;
