@@ -45,7 +45,7 @@ export async function parseCommand(message: Message<boolean>): Promise<void> {
         影響の大きいコマンドなので、デフォルトではまず操作内容を書き出し、実行するか否かを尋ねます。
         \`- y\` または \`--yes\` オプション付きでコマンドを実行すると、即実行します。\n`)
         .addArgument(new Argument("[project]", "対象のプロジェクト").choices(["test", "dest"]).default("dest"))
-        .option("-c, --close", "ソースプロジェクトのIssueをCloseする", true)
+        .option("--no-close", "ソースプロジェクトのIssueをCloseしないようにします")
         .option("-y, --yes", "確認せずに即実行します")
         .action(execMkissue(message));
 
