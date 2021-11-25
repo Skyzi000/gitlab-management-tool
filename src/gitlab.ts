@@ -22,13 +22,12 @@ export async function gitlabMilestonesCsv(projectId: string | number) {
 }
 
 export async function gitlabMemberListCsv(projectId: string | number) {
-    let csv: string = "";
     const teamColors = await gitlabMemberTeamColors();
-    await gitlab.ProjectMembers.all(projectId, { includeInherited: true }).then((members) => {
-        members.forEach(m => {
-            const labId = Number(m.id);
-            csv += `${m.id},${m.name},${m.username},${labId in teamColors ? teamColors[labId] : "null"}\n`;
-        });
+    const members = await gitlab.ProjectMembers.all(projectId, { includeInherited: true });
+    let csv: string = "id,name,username,team_color";
+    members.forEach(m => {
+        const labId = Number(m.id);
+        csv += `${m.id},${m.name},${m.username},${labId in teamColors ? teamColors[labId] : "null"}\n`;
     });
     return csv;
 }
