@@ -61,32 +61,34 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
         const executionDetailHeader = `mkissue 実行内容${execute ? "" : "プレビュー"} (v${botVersion})\n\n発行元プロジェクトID: ${sourceProjectId}\n発行先プロジェクト: ${project} (id: ${destProjectId})\n`;
         const milestoneMutex = new Mutex();
         const results = await Promise.all(srcIssues.map(async srcIssue => makeIssue(srcIssue)));
-        return `${executionDetailHeader}\n------\n${results.join("\n------\n")}`;
+        return `${executionDetailHeader}\n------\n${results.map(r=>r.join("\n")).join("\n\n------\n")}`;
 
-        async function makeIssue(sourceIssue: Omit<IssueSchema, "epic">): Promise<string> {
+        async function makeIssue(sourceIssue: Omit<IssueSchema, "epic">): Promise<string[]> {
             const srcIssue = sourceIssue as IssueSchema;
-            let executionDetailText = `Src: ${srcIssue.title} (#${srcIssue.iid})\n`;
+            let executionDetailText = [`Src: ${srcIssue.title} (#${srcIssue.iid})`];
             try {
                 // チームごとのラベルは一旦外しておく
                 const labels = srcIssue.labels?.filter(name => !name.startsWith("2"));
-                if (!labels)
-                    return executionDetailText + "ラベルがないのでスキップします\n";
+                if (!labels) {
+                    executionDetailText.push("ラベルがないのでスキップします");
+                    return executionDetailText;
+                }
                 // マイルストーンIDの取得
                 let destMilestoneId: number | undefined;
                 await milestoneMutex.runExclusive(async () => {
                     destMilestoneId = await getDestMilestoneId(srcIssue);
                     if (srcIssue.milestone?.id && !destMilestoneId) {
-                        executionDetailText += `Milestone: "${srcIssue.milestone.title}" (新規作成)\n`;
+                        executionDetailText.push(`Milestone: "${srcIssue.milestone.title}" (新規作成)`);
                         if (execute) {
                             destMilestoneId = await createMilestone(srcIssue);
                         }
                     } else {
-                        executionDetailText += `Milestone: "${srcIssue.milestone.title}" (${destMilestoneId})\n`;
+                        executionDetailText.push(`Milestone: "${srcIssue.milestone?.title ?? "無し"}" (${destMilestoneId})`);
                     }
                 });
                 if (!labels.find(l => l.match("3_全役職"))) {
                     if (labels.find(l => l.startsWith("3"))) {
-                        executionDetailText += `全役職対象でないミッション作成機能は未実装なのでスキップします\n`;
+                        executionDetailText.push(`全役職対象でないミッション作成機能は未実装なのでスキップします`);
                         return executionDetailText;
                     }
                     // 役職ラベルが何もついてなければ全役職ラベルを付ける
@@ -95,7 +97,7 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
                 if (labels.find(l => l.match("個人"))) {
                     const teamColors = await gitlabMemberTeamColors();
                     const destMembers = (await gitlab.ProjectMembers.all(destProjectId, { includeInherited: true })).filter(member => member.id in teamColors && teamColors[member.id]);
-                    executionDetailText += `Labels: ${labels.join(", ")}\nTargetMembers: ${destMembers.map(m => m.name).join(", ")}\n`;
+                    executionDetailText.push(`Labels: ${labels.join(", ")}\nTargetMembers: ${destMembers.map(m => m.name).join(", ")}`);
                     if (execute) {
                         const results = await Promise.all(destMembers.map(async member => {
                             try {
@@ -112,27 +114,27 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
                                 issueDb.set(created.iid.toString(), srcIssue.iid);
                                 return created;
                             } catch (error) {
-                                executionDetailText += `[Error] ${member.name}に割り当てるIssueの生成中にエラーが発生したのでスキップします\n詳細: ${error}`;
+                                executionDetailText.push(`[Error] ${member.name}に割り当てるIssueの生成中にエラーが発生したのでスキップします\n詳細: ${error}`);
                             }
                         }));
-                        executionDetailText += `生成したIssueの数: ${results.filter(r => r !== undefined).length}\n`;
+                        executionDetailText.push(`生成したIssueの数: ${results.filter(r => r !== undefined).length}`);
                     }
                     if (close) {
-                        executionDetailText += `ソースプロジェクトの ${srcIssue.title} (#${srcIssue.iid}) をClose\n`;
+                        executionDetailText.push(`ソースプロジェクトの ${srcIssue.title} (#${srcIssue.iid}) をClose`);
                         if (execute) {
                             await gitlab.Issues.edit(srcIssue.project_id, srcIssue.iid, { state_event: "close" });
                         }
                     }
                 } else if (srcIssue.labels?.find(l => l.match("グループ"))) {
 
-                    executionDetailText += `グループミッション作成機能は未実装なのでスキップします\n`;
+                    executionDetailText.push(`グループミッション作成機能は未実装なのでスキップします`);
                     return executionDetailText;
                 } else {
-                    executionDetailText += `[Warn] 個人ラベルもグループラベルも付いていないのでスキップします\n`;
+                    executionDetailText.push(`[Warn] 個人ラベルもグループラベルも付いていないのでスキップします`);
                     return executionDetailText;
                 }
             } catch (error) {
-                executionDetailText += `[Error] 予期しないエラーが発生したのでスキップします\n詳細: ${error}\n${error instanceof Error ? error.stack : ""}\n`;
+                executionDetailText.push(`[Error] 予期しないエラーが発生したのでスキップします\n詳細: ${error}\n${error instanceof Error ? error.stack : ""}`);
                 console.error(error);
                 return executionDetailText;
             }
