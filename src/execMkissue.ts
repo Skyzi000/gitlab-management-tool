@@ -49,41 +49,52 @@ export function execMkissue(message: Message<boolean>): (...args: any[]) => Prom
         }
     };
     async function makeIssues(sourceProjectId: string, destProjectId: string, execute: boolean, close: boolean, project?: string) {
-        const srcIssues = (await gitlab.Issues.all({ srcProjectId: sourceProjectId, state: "opened" })) as IssueSchema[];
+        const srcIssues = (await gitlab.Issues.all({ projectId: sourceProjectId, state: "opened" })) as IssueSchema[];
         let executionDetailText = `mkissue 実行内容${execute ? "" : "プレビュー"} (v${botVersion})\n\n発行元プロジェクトID: ${sourceProjectId}\n発行先プロジェクト: ${project} (id: ${destProjectId})\n`;
 
-        srcIssues.forEach(async (issue) => {
-            executionDetailText += `\n------\nSrc: ${issue.title} (#${issue.iid})\n`;
-            if (issue.labels?.find(l => l.match("個人"))) {
-                if (!issue.labels?.find(l => l.match("全役職"))) {
-                    executionDetailText += `全役職対象でないミッション作成機能は未実装なのでスキップします\n`;
-                    return;
+        srcIssues.forEach(async (srcIssue) => {
+            executionDetailText += `\n------\nSrc: ${srcIssue.title} (#${srcIssue.iid})\n`;
+            // チームごとのラベルは一旦外しておく
+            const labels = srcIssue.labels?.filter(name => !name.startsWith("2"));
+            if (labels?.find(l => l.match("個人"))) {
+                if (!labels.find(l => l.match("3_全役職"))) {
+                    if (labels.find(l => l.startsWith("3"))) {
+                        executionDetailText += `全役職対象でないミッション作成機能は未実装なのでスキップします\n`;
+                        return;
+                    }
+                    // 役職ラベルが何もついてなければ全役職ラベルを付ける
+                    labels.push("3_全役職");
                 }
                 const teamColors = await gitlabMemberTeamColors();
-                const members = await gitlab.ProjectMembers.all(destProjectId, { includeInherited: true });
-                const labels = issue.labels?.filter(name => !name.startsWith("2"));
-                executionDetailText += `Labels: ${labels.join(", ")}\nTargetMembers: ${members.map(m => m.name).join(", ")}\n`;
-                members.forEach(async (member) => {
+                const destMembers = await gitlab.ProjectMembers.all(destProjectId, { includeInherited: true });
+
+                executionDetailText += `Labels: ${labels.join(", ")}\nTargetMembers: ${destMembers.map(m => m.name).join(", ")}\n`;
+                destMembers.forEach(async (member) => {
                     const la = labels.concat([`2_${teamColors[member.id]}チーム`]);
 
                     if (execute) {
                         gitlab.Issues.create(destProjectId, {
-                            title: issue.title,
-                            description: issue.description,
+                            title: srcIssue.title,
+                            description: srcIssue.description,
                             assignee_ids: [member.id],
-                            confidential: issue.confidential,
-                            due_date: issue.due_date,
+                            confidential: srcIssue.confidential,
+                            due_date: srcIssue.due_date,
                             labels: la
                         });
                     }
+                    if (close) {
+                        executionDetailText += `ソースプロジェクトの ${srcIssue.title} (#${srcIssue.iid}) をClose\n`;
+                        if (execute) {
+                            gitlab.Issues.closedBy(srcIssue.project_id, srcIssue.iid);
+                        }
+                    }
                 });
-            } else if (issue.labels?.find(l => l.match("グループ"))) {
+            } else if (srcIssue.labels?.find(l => l.match("グループ"))) {
                 executionDetailText += `グループミッション作成機能は未実装なのでスキップします\n`;
                 return;
-            }
-
-            if (close) {
-                executionDetailText += `ソースプロジェクトの ${issue.title} をClose\n`;
+            } else {
+                executionDetailText += `[Warn] 個人ラベルもグループラベルも付いていないのでスキップします\n`;
+                return;
             }
         });
         return executionDetailText;
