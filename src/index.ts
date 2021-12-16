@@ -32,7 +32,7 @@ client.once("ready", async () => {
     console.log(`${client.user.username} is ready!`);
 });
 
-client.on("message", onMessage);
+client.on("messageCreate", onMessage);
 
 async function onMessage(message: Message): Promise<void> {
     if (message.author.bot ||
